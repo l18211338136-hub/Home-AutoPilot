@@ -1,0 +1,12 @@
+# HomeFly / PX4 inspired C/C++ formatting
+--style=allman
+--indent=tab=8
+--indent-switches
+--pad-oper
+--pad-header
+--align-pointer=name
+--align-reference=name
+--max-code-length=140
+--break-after-logical
+--lineend=linux
+--suffix=none

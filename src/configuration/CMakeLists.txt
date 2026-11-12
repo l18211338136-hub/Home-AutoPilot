@@ -1,0 +1,4 @@
+add_library(homefly_configuration STATIC
+	flight_config.cpp)
+
+target_link_libraries(homefly_configuration PUBLIC homefly_include homefly_control)

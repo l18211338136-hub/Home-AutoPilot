@@ -1,0 +1,4 @@
+add_library(homefly_communication STATIC
+	telemetry.cpp)
+
+target_link_libraries(homefly_communication PUBLIC homefly_include homefly_flight_core)

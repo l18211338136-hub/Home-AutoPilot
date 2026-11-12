@@ -1,0 +1,20 @@
+---
+Language: Cpp
+BasedOnStyle: Microsoft
+BreakBeforeBraces: Allman
+UseTab: Always
+TabWidth: 8
+IndentWidth: 8
+ContinuationIndentWidth: 8
+AccessModifierOffset: 0
+ColumnLimit: 140
+LineEnding: LF
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+BreakConstructorInitializers: BeforeComma
+ConstructorInitializerIndentWidth: 8
+PointerAlignment: Right
+SpaceBeforeParens: ControlStatements
+Standard: Latest
+...
