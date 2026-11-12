@@ -50,6 +50,7 @@ struct Options
 	uint16_t wifi_port{14540};
 	const char* wifi_host{"127.0.0.1"};
 	uint32_t link_timeout_ms{500};
+	uint32_t overrun_factor{0};
 	uint16_t gazebo_local_port{14550};
 	uint16_t gazebo_remote_port{14551};
 	uint32_t gazebo_timeout_ms{3000};
@@ -160,6 +161,7 @@ void print_usage()
 	std::printf("  --wifi-host IP            GCS host (default 127.0.0.1)\n");
 	std::printf("  --wifi-port N             local UDP port receiving commands (default 14540)\n");
 	std::printf("  --link-timeout MS         disarm if no command for N ms (default 500, 0 = disabled)\n");
+	std::printf("  --overrun-factor N        control-overrun tolerance = N x period (default 3; raise on jittery hosts)\n");
 	std::printf("  --help                    show this message\n");
 }
 
@@ -243,7 +245,15 @@ int main(
 
 	using namespace homefly;
 
-	const FlightConfig config = default_quad_x_config();
+	// Jittery hosts (WSL2, CI runners) trip the default 3-period overrun limit
+	// on ordinary scheduler preemptions. --overrun-factor widens the window.
+	FlightConfig config = default_quad_x_config();
+
+	if (options.overrun_factor != 0)
+	{
+		config.overrun_factor = options.overrun_factor;
+	}
+
 	const float dt_s = static_cast<float>(config.control_period_us) * 1.0e-6f;
 
 	// ---- Composition root: the ONLY place where the simulation source is

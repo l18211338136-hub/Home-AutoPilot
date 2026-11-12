@@ -116,6 +116,8 @@ tools/wifi_gcs.py：极简 Python 地面站。ARM → 20Hz SETPOINT → Ctrl-C �
 
 宿主实时性已知问题（Windows）：默认调度器 tick ~15.6ms 会让 sleep_for(1ms) 周期性过冲 3ms overrun 阈值。已修：LinuxTimer 构造时 timeBeginPeriod(1)（winmm）+ 尾部 400us 忙等自旋；--realtime 时控制线程 THREAD_PRIORITY_HIGHEST、日志线程 BELOW_NORMAL（main.cpp）。Linux/真 MCU 不受影响。
 
+WSL2 已知问题：宿主调度抖动仍会偶发超过 3ms overrun 阈值（一次 ControlOverrun -> 粘性 Failsafe，re-arm 恢复在持续抖动下不可靠）。缓解：FC 加 `--overrun-factor N` 放宽阈值（N x 1ms，建议 WSL2 用 8~10）；e2e 命令示例 `homefly_linux_native --realtime --steps 13000 --wifi --link-timeout 500 --overrun-factor 10`。
+
 
 飞控系统核心。
 
