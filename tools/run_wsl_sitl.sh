@@ -111,7 +111,9 @@ if [[ "$BACKEND" != "mock" ]]; then
 	command -v gz >/dev/null || die "gz not found; install Gazebo in this WSL distro"
 	[[ -f "$WORLD" ]] || die "world not found: $WORLD"
 	echo "==> starting Gazebo (headless): $WORLD"
-	gz sim -s -v4 "$WORLD" > "$LOG_DIR/gz.log" 2>&1 &
+	# -r: start RUNNING. Without it the server loads the world paused and
+	# publishes no IMU data (bridge times out with imu_frames=0).
+	gz sim -s -r -v4 "$WORLD" > "$LOG_DIR/gz.log" 2>&1 &
 	PIDS+=("$!")
 	sleep 2
 	if ! kill -0 "${PIDS[0]}" 2>/dev/null; then
