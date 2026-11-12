@@ -2,13 +2,24 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <thread>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+
 #include "applications/linux_native/simulation_source.hpp"
+#include "applications/linux_native/udp_link.hpp"
+#include "communication/command_receiver.hpp"
+#include "communication/control_protocol.hpp"
 #include "communication/telemetry.hpp"
 #include "configuration/flight_config.hpp"
 #include "control/math_types.hpp"
@@ -35,6 +46,10 @@ struct Options
 	bool no_flight_log{false};
 	bool gazebo{false};
 	bool help{false};
+	bool wifi{false};
+	uint16_t wifi_port{14540};
+	const char* wifi_host{"127.0.0.1"};
+	uint32_t link_timeout_ms{500};
 	uint16_t gazebo_local_port{14550};
 	uint16_t gazebo_remote_port{14551};
 	uint32_t gazebo_timeout_ms{3000};
@@ -73,6 +88,22 @@ Options parse_options(
 		else if (std::strcmp(argv[i], "--help") == 0)
 		{
 			options.help = true;
+		}
+		else if (std::strcmp(argv[i], "--wifi") == 0)
+		{
+			options.wifi = true;
+		}
+		else if (std::strcmp(argv[i], "--wifi-host") == 0 && i + 1 < argc)
+		{
+			options.wifi_host = argv[++i];
+		}
+		else if (std::strcmp(argv[i], "--wifi-port") == 0 && i + 1 < argc)
+		{
+			options.wifi_port = static_cast<uint16_t>(std::strtoul(argv[++i], nullptr, 10));
+		}
+		else if (std::strcmp(argv[i], "--link-timeout") == 0 && i + 1 < argc)
+		{
+			options.link_timeout_ms = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
 		}
 		else if (std::strcmp(argv[i], "--steps") == 0 && i + 1 < argc)
 		{
@@ -125,6 +156,10 @@ void print_usage()
 	std::printf("  --gazebo-local-port N     UDP port receiving IMU (default 14550)\n");
 	std::printf("  --gazebo-remote-port N    UDP port sending motors (default 14551)\n");
 	std::printf("  --gazebo-timeout MS       wait for the next Gazebo IMU frame (default 3000)\n");
+	std::printf("  --wifi                    ground-station control over UDP (replaces hardcoded setpoint)\n");
+	std::printf("  --wifi-host IP            GCS host (default 127.0.0.1)\n");
+	std::printf("  --wifi-port N             local UDP port receiving commands (default 14540)\n");
+	std::printf("  --link-timeout MS         disarm if no command for N ms (default 500, 0 = disabled)\n");
 	std::printf("  --help                    show this message\n");
 }
 
@@ -255,6 +290,33 @@ int main(
 	FlightLogWriter flight_log;
 	DiscardSink discard_sink;
 
+	// ---- WiFi ground-station control link (optional). ----
+	// The only place a concrete network link is instantiated. CommandReceiver
+	// parses frames off the ILink in the low-priority task and feeds a latched
+	// Setpoint into the control loop; the control loop itself never touches a
+	// socket. Without --wifi the original hardcoded setpoint is used.
+	std::unique_ptr<UdpLink> wifi_link;
+	std::unique_ptr<CommandReceiver> command_receiver;
+
+	if (options.wifi)
+	{
+		wifi_link = std::make_unique<UdpLink>();
+		if (!wifi_link->open(options.wifi_port, options.wifi_host, options.wifi_port))
+		{
+			HF_LOG_FATAL("WIFI", "cannot open UDP control link on port %u",
+				static_cast<unsigned>(options.wifi_port));
+			log_drain();
+			log_shutdown();
+			return 1;
+		}
+		command_receiver = std::make_unique<CommandReceiver>(
+			*wifi_link, clock, options.link_timeout_ms * 1000u);
+		HF_LOG_INFO("WIFI", "control link listening udp://%s:%u, link-timeout=%u ms",
+			options.wifi_host,
+			static_cast<unsigned>(options.wifi_port),
+			static_cast<unsigned>(options.link_timeout_ms));
+	}
+
 	// ---- Open the platform flight log storage (link time bound). ----
 	bool recording = !options.no_flight_log;
 
@@ -329,7 +391,7 @@ int main(
 	// This is the ONLY place where text log I/O and flight log file writes
 	// happen. On a real MCU map this to a FreeRTOS task / idle hook.
 	std::atomic<bool> stop_logging{false};
-	std::thread logging_task([&stop_logging, &flight_log, &flight_data, &discard_sink]() noexcept
+	std::thread logging_task([&stop_logging, &flight_log, &flight_data, &discard_sink, &command_receiver]() noexcept
 	{
 		while (!stop_logging.load(std::memory_order_acquire))
 		{
@@ -340,6 +402,12 @@ int main(
 			else
 			{
 				flight_data.drain_to(discard_sink, kFlightLogBlockRecords);
+			}
+
+			// Drain inbound command frames here, never from the control loop.
+			if (command_receiver)
+			{
+				command_receiver->poll();
 			}
 
 			log_drain(8u);
@@ -359,12 +427,26 @@ int main(
 		log_drain();
 	});
 
+	// Real-time host runs: a single scheduler preemption of the control thread
+	// by the logging thread (same priority, full timeslice of console I/O)
+	// exceeds the 3-period overrun limit and trips ControlOverrun. Drop the
+	// logging thread below normal and raise the control thread instead.
+#ifdef _WIN32
+	if (options.realtime)
+	{
+		SetThreadPriority(logging_task.native_handle(), THREAD_PRIORITY_BELOW_NORMAL);
+		SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+	}
+#endif
+
+	// command_receiver and the sim plant are mutually exclusive setpoint
+	// sources; the one used is decided once at startup. The control loop only
+	// ever reads the latched setpoint (see the per-cycle refresh below).
 	Setpoint setpoint{};
-	setpoint.throttle = 0.5f;
-	setpoint.arm_request = true;
 
 	const uint32_t fault_step = options.steps * 2u / 5u;
 	FlightMode previous_mode = controller.mode();
+	bool previous_link_lost = false;
 
 	for (uint32_t step = 0; step < options.steps; ++step)
 	{
@@ -380,6 +462,21 @@ int main(
 			break;
 		}
 
+		// Refresh the setpoint each cycle from the (latched) command receiver.
+		// latest_setpoint() performs NO socket I/O: it only reads the receiver's
+		// latched state and the clock, so this stays inside the control-loop
+		// contract. All actual datagram receive happens in the low priority
+		// logging task via CommandReceiver::poll().
+		if (command_receiver)
+		{
+			setpoint = command_receiver->latest_setpoint();
+		}
+		else
+		{
+			setpoint.throttle = 0.5f;
+			setpoint.arm_request = true;
+		}
+
 		controller.step(setpoint);
 		source->end_cycle(dt_s);
 		telemetry.report(controller.state(), controller.output(),
@@ -391,6 +488,23 @@ int main(
 				mode_name(previous_mode), mode_name(controller.mode()),
 				static_cast<unsigned>(controller.failsafe_reason()));
 			previous_mode = controller.mode();
+		}
+
+		if (command_receiver)
+		{
+			const bool lost = command_receiver->link_lost();
+			if (lost != previous_link_lost)
+			{
+				if (lost)
+				{
+					HF_LOG_WARN("WIFI", "control link lost -> disarming");
+				}
+				else
+				{
+					HF_LOG_INFO("WIFI", "control link restored");
+				}
+				previous_link_lost = lost;
+			}
 		}
 
 		// Structured high frequency data: one POD copy, no formatting, no I/O.
@@ -521,6 +635,14 @@ int main(
 	HF_LOG_INFO("LOGGING", "emitted=%u drained=%u dropped(level=%u rate=%u full=%u) sink_failures=%u",
 		stats.emitted, stats.drained, stats.dropped_level, stats.dropped_rate,
 		stats.dropped_full, stats.backend_failures);
+
+	if (command_receiver)
+	{
+		HF_LOG_INFO("WIFI", "frames_received=%u parse_errors=%u link_lost=%s",
+			command_receiver->frames_received(), command_receiver->parse_errors(),
+			command_receiver->link_lost() ? "yes" : "no");
+	}
+
 	HF_LOG_INFO("SYSTEM", "result: %s", passed && log_ok ? "PASS" : "FAIL");
 
 	log_drain();

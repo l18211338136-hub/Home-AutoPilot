@@ -1,6 +1,7 @@
 add_executable(homefly_linux_native
 	main.cpp
-	simulation_source.cpp)
+	simulation_source.cpp
+	udp_link.cpp)
 
 target_link_libraries(homefly_linux_native PRIVATE
 	homefly_flight_core

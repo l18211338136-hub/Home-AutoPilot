@@ -16,6 +16,8 @@ public:
 		const IClock& clock
 	) noexcept;
 
+	~LinuxTimer() noexcept override;
+
 	void sleep_until_us(
 		uint64_t target_us
 	) override;

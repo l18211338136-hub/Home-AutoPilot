@@ -97,6 +97,26 @@ src/applications/linux_native/
 
 部署约束：外部仿真器、桥接进程与飞控必须处于同一 UDP 网络命名空间。WSL2 的 `localhostForwarding` 只转发 TCP，Windows 的 `.exe` 与 WSL2 桥接走 `127.0.0.1` UDP 必然失败；在 WSL2 中必须把飞控重新编译成 Linux 原生 ELF，三者全部放 Linux 侧（或全部放 Windows 侧）。一键入口 `tools/run_wsl_sitl.sh`，完整 world 模板 `tools/gazebo/homefly_quad.world`，细节见 `docs/gazebo.md` 第 8 节。
 
+WiFi 地面站控制链路（上行指令，与 SITL 同一套架构模式）：
+```
+src/communication/
+├── control_protocol.hpp/.cpp   28 字节自描述小端帧（magic "HFLC"/version/type/seq/payload[16]/FNV-1a 校验）
+│                               类型：Arm=1 Disarm=2 Setpoint=3 Ping=4 Mode=5；Setpoint payload = 4 个 float
+└── command_receiver.hpp/.cpp   poll() 唯一做 I/O（低优先级任务）；latest_setpoint() 控制循环调用、零 I/O
+                                ARM/DISARM 锁存；链路超时强制断臂（link_timeout_us=0 禁用）
+
+src/applications/linux_native/
+└── udp_link.hpp/.cpp           ILink 的 non-blocking UDP 实现（复用 simulation/gazebo/udp_socket.hpp）
+```
+tools/wifi_gcs.py：极简 Python 地面站。ARM → 20Hz SETPOINT → Ctrl-C 发 DISARM；`--rearm-every N` 周期性 DISARM+ARM（间隔 150ms 分两帧发送）——FSM 粘性 Failsafe 只能靠 DisarmRequest 离开，活链路下这是唯一恢复路径，且两帧背靠背会被单次 poll() 合并消费而互相抵消。
+
+核心约束：FlightCore 零改动；控制循环只读 latest_setpoint()（latched 状态 + 时钟，无 socket I/O）；所有 UDP 收发只在低优先级 logging 任务里 poll()；链路超时降级为断臂（复用 SafetyMonitor 模式）。验证：
+- 确定性集成测试 test/communication/test_wifi_integration.cpp（真实 UdpLink 环回 → CommandReceiver → FlightController，虚拟时钟，含断臂测试）——CTest 必绿。
+- 真实二进制 e2e：`homefly_linux_native --realtime --steps 13000 --wifi --link-timeout 500` + `python tools/wifi_gcs.py --rate 20 --count 300 --rearm-every 20` → `result: PASS`。
+
+宿主实时性已知问题（Windows）：默认调度器 tick ~15.6ms 会让 sleep_for(1ms) 周期性过冲 3ms overrun 阈值。已修：LinuxTimer 构造时 timeBeginPeriod(1)（winmm）+ 尾部 400us 忙等自旋；--realtime 时控制线程 THREAD_PRIORITY_HIGHEST、日志线程 BELOW_NORMAL（main.cpp）。Linux/真 MCU 不受影响。
+
+
 飞控系统核心。
 
 负责：
