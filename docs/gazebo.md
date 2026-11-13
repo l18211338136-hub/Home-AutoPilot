@@ -168,6 +168,7 @@ python tools/gazebo_bridge.py --backend gz \
 - 13 / 13 CTest 通过，含协议 golden 向量、UDP 回环、seq 去重、超时、HAL 互锁与 SPSC 环。
 - `tools/run_wsl_sitl.sh` 在 Windows Git Bash 下以 mock 后端完整跑通：自动协议自测 → 桥接 → 飞控 2000 帧 → `.hfl --strict` 校验，脚本退出 `PASS`（脚本会自动探测 Windows 的 `.exe`，便于在未装 WSL 的主机上先验证流程）。
 - `tools/gazebo/homefly_quad.world` 与 `.sdf` 均通过 XML 良构性解析（此前两个文件注释里的 `--backend` 会让 XML 注释非法，已修正）。
+- **WSLg GUI 三终端全闭环**（Gazebo Sim GUI + bridge + FC，`--steps 30000`）：`mode=stabilize` 全程、`motors_zero=no`、`result: PASS`；`imu_rx=30000 imu_bad=0 imu_drop=0 motor_tx=30000 motor_drop=0 send_fail=0`，`.hfl` `records=30000 blocks=1875 footer=ok checksum=0x07AE67D2`。GUI 视口确认四个 rotor 由 FC 电机输出驱动、模型姿态响应，最终 roll/pitch 收敛到 0。
 
 **尚未验证 / 预留**：
 
