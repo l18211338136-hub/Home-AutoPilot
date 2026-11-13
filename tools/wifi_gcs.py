@@ -29,6 +29,7 @@ import argparse
 import socket
 import struct
 import sys
+import threading
 import time
 
 MAGIC = 0x48464C43
@@ -88,6 +89,11 @@ def main() -> int:
                         help="re-send DISARM+ARM every N setpoints (pilot re-arm "
                              "gesture). The only way to recover a stick Failsafe "
                              "while the link is alive (0 = disabled)")
+    parser.add_argument("--interactive", action="store_true",
+                        help="read live stick commands from stdin, one per line: "
+                             "roll R | pitch P | yaw Y | t THROTTLE | arm | "
+                             "disarm | q. Values are re-sent at --rate, so the "
+                             "Gazebo GUI view responds while you type.")
     args = parser.parse_args()
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -103,12 +109,64 @@ def main() -> int:
     print("[wifi_gcs] sending ARM ...")
     send(ARM)
 
+    # Live stick state. In interactive mode a daemon thread reads stdin and
+    # mutates this dict; the send loop keeps owning the socket (and seq) so
+    # frames stay ordered. Non-interactive mode just uses the CLI values.
+    live = {"throttle": args.throttle, "roll": args.roll,
+            "pitch": args.pitch, "yaw_rate": args.yaw_rate,
+            "arm": False, "disarm": False, "quit": False}
+
+    if args.interactive:
+
+        def read_commands() -> None:
+            print("[wifi_gcs] interactive: roll R | pitch P | yaw Y | "
+                  "t THROTTLE | arm | disarm | q")
+            for line in sys.stdin:
+                parts = line.strip().lower().split()
+                if not parts:
+                    continue
+                key = parts[0]
+                try:
+                    if key in ("roll", "r"):
+                        live["roll"] = float(parts[1])
+                    elif key in ("pitch", "p"):
+                        live["pitch"] = float(parts[1])
+                    elif key in ("yaw", "y"):
+                        live["yaw_rate"] = float(parts[1])
+                    elif key in ("t", "throttle"):
+                        live["throttle"] = max(0.0, min(1.0, float(parts[1])))
+                    elif key == "arm":
+                        live["arm"] = True
+                    elif key == "disarm":
+                        live["disarm"] = True
+                    elif key in ("q", "quit"):
+                        live["quit"] = True
+                        break
+                    else:
+                        print(f"[wifi_gcs] unknown command: {key}")
+                        continue
+                    print("[wifi_gcs] -> throttle=%.2f roll=%+.3f pitch=%+.3f "
+                          "yaw_rate=%+.3f" % (live["throttle"], live["roll"],
+                                             live["pitch"], live["yaw_rate"]))
+                except (IndexError, ValueError):
+                    print("[wifi_gcs] usage: roll 0.2 | pitch -0.1 | yaw 0.5 "
+                          "| t 0.7 | arm | disarm | q")
+
+        threading.Thread(target=read_commands, daemon=True).start()
+
     interval = 1.0 / args.rate if args.rate > 0 else 0.0
     sent = 0
     next_time = time.monotonic()
     try:
         while True:
-            payload = setpoint_payload(args.throttle, args.roll, args.pitch, args.yaw_rate)
+            if live["arm"]:
+                send(ARM)
+                live["arm"] = False
+            if live["disarm"]:
+                send(DISARM)
+                live["disarm"] = False
+            payload = setpoint_payload(live["throttle"], live["roll"],
+                                       live["pitch"], live["yaw_rate"])
             if args.rearm_every and sent > 0 and sent % args.rearm_every == 0:
                 print("[wifi_gcs] re-arming (DISARM+ARM) ...")
                 send(DISARM)
@@ -120,6 +178,11 @@ def main() -> int:
                 send(ARM)
             send(SETPOINT, payload)
             sent += 1
+            # Check quit only AFTER a frame is out: with piped stdin the "q"
+            # can be consumed by the reader thread before this loop's first
+            # iteration, which would otherwise exit with zero setpoints sent.
+            if live["quit"]:
+                break
             if args.count and sent >= args.count:
                 break
             next_time += interval

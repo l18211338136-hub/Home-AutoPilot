@@ -305,3 +305,64 @@ gz topic -e -t /homefly/actuators -n 3    # velocity[] 非零 = 桥接确实在�
 
 > 想贴日志做可复现验证，把终端 2 也改成 `--steps 30000`，与 FC 同步结束。
 > 想一直看就给 FC 一个更大的 `--steps`，终端 2 保持 `--steps 0`。
+
+### 8.8 GUI + WiFi GCS 可视化遥控（四终端）
+
+把 8.7 的 GUI 闭环和 WiFi GCS 合起来。多出来的坑是**两个时钟不同步**：
+
+- FC 在 `--gazebo` 下用 Gazebo 合成时间戳作仿真时钟（`source->clock()`），
+  `CommandReceiver` 用 `--link-timeout` 在这条**仿真时钟**上判断链路是否 stale
+  （`command_receiver.cpp:39`、`:119`）。
+- GCS 按**墙钟** 20 Hz 发帧；bridge 默认以 UDP 允许的最快速度锁步推进，30000 步
+  可能在几秒墙钟内跑完，两帧 GCS 之间在仿真时间里已远超 500 ms，FC 会反复误判
+  链路丢失并断臂。
+- bridge 的 `--realtime` 把每帧 IMU 锚定到 `period_us`（1 ms）墙钟节拍，使
+  **仿真时间 ≈ 墙钟时间**：GCS 帧与 FC 控制周期对齐，GUI 视口也才真正可实时观看。
+
+> **同名的两个 `--realtime` 别搞混**：4.1 节表里那个是 **FC 参数**，与
+> `--gazebo` 互斥、同时给会被忽略（所以终端 3 **不要**加）；这里的是
+> **bridge 参数**，必须加在终端 2。两者作用对象完全不同。
+
+四个终端，全部 WSL 侧，都先 `export GZ_IP=127.0.0.1`，`git pull` 后按序启动：
+
+```bash
+# 1 Gazebo GUI + server
+gz sim -r -v4 tools/gazebo/homefly_quad.world
+
+# 2 bridge（--realtime 必须，--steps 0 不限帧）
+python3 tools/gazebo_bridge.py --backend gz --realtime --steps 0 --timeout 20
+
+# 3 飞控（--gazebo 与 --wifi 可共存；link-timeout 放宽到 2 s 抗 WSL2 抖动）
+./build/wsl/src/applications/linux_native/homefly_linux_native \
+    --gazebo --wifi --link-timeout 2000 --steps 30000 \
+    --overrun-factor 10 --gazebo-timeout 10000
+
+# 4 地面站（最后启动；--count 0 持续发送，--interactive 读 stdin）
+python3 tools/wifi_gcs.py --rate 20 --count 0 --interactive --throttle 0.5
+```
+
+终端 4 里逐行输入即可实时改杆（弧度 / 归一化油门），每个值在下一个 20 Hz 帧生效：
+
+```
+roll 0.20        # 横滚目标 0.20 rad
+pitch -0.10      # 俯仰目标
+yaw 0.50         # 偏航角速度 rad/s
+t 0.70           # 油门 0..1
+arm / disarm     # 手动上锁 / 解锁
+q                # 退出（自动发 DISARM）
+```
+
+**两个容易踩的判定细节**：
+
+1. GCS 必须先发 ARM 才能进 `Stabilize`（无 `--wifi` 时 hardcoded 的 `arm_request`
+   会被 `latest_setpoint()` 取代）。
+2. `main.cpp:624-627` 的 `result: PASS` 要求**结束瞬间** `mode=Stabilize` 且
+   `|roll|,|pitch| < 0.05 rad`。这是自稳回归判据、不是遥控判据：打杆期间最后一步
+   姿态不为零就会报 `FAIL`，属正常。想拿 PASS 就在收尾前把杆回中
+   （`roll 0` / `pitch 0` / `yaw 0`）等姿态收敛，并**等 FC 打印 `result` 之后
+   再在 GCS 输 `q`**，否则最后的 DISARM 会让 mode 变成 `Disarmed` 而 FAIL。
+   想缩短一轮把终端 3 的 `--steps` 调小（10000 ≈ 10 s）。
+
+**验收看这些，不要只看 `result`**：GUI 视口里飞机随打杆实时倾斜/加减速；
+FC 日志 `frames_received` 持续增长、`link_lost=no`、`mode=stabilize`；
+`gz topic -e -t /homefly/actuators -n 3` 的 velocity 随油门变化。

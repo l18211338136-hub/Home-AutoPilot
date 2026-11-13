@@ -430,6 +430,14 @@ def run_gz(args: argparse.Namespace, flavor: str) -> int:
         sock.close()
         return 1
 
+    # Without pacing the lockstep loop advances simulation time as fast as UDP
+    # and host scheduling allow (30000 cycles in a few wall-clock seconds).
+    # That is fine for a headless regression run, but a WiFi GCS sends at a
+    # WALL-CLOCK rate while CommandReceiver judges staleness on the FC's
+    # SIMULATION clock -> the link looks dead and the FC disarms continuously.
+    # --realtime anchors one IMU per wall-clock control period so sim time ~
+    # real time, GCS frames line up, and the GUI view is watchable.
+    tick = time.monotonic()
     while args.steps == 0 or state["motors"] < args.steps:
         if args.timeout and time.monotonic() - last_progress > args.timeout:
             print(f"[{flavor}] no motor frame for {args.timeout}s", file=sys.stderr)
@@ -446,6 +454,16 @@ def run_gz(args: argparse.Namespace, flavor: str) -> int:
         state["seq"] += 1
         send_imu(state["seq"])
         last_progress = time.monotonic()
+
+        if args.realtime:
+            tick += args.period_us * 1.0e-6
+            remaining = tick - time.monotonic()
+            if remaining > 0:
+                time.sleep(remaining)
+            else:
+                # Slipped behind (host jitter): re-anchor instead of bursting
+                # a backlog of IMU frames into the FC's SPSC ring.
+                tick = time.monotonic()
 
     sock.close()
     print(f"[{flavor}] done: imu_frames={state['frames']} "
@@ -472,6 +490,14 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
                         help="Gazebo sim time step; must match control_period_us")
     parser.add_argument("--timeout", type=float, default=5.0,
                         help="seconds without a motor frame before giving up")
+    parser.add_argument("--realtime", action="store_true",
+                        help="pace IMU frames to the WALL CLOCK (period_us per "
+                             "cycle). Required when a WiFi GCS drives the FC: "
+                             "CommandReceiver measures staleness on the FC's "
+                             "SIMULATION clock, so without pacing the FC runs "
+                             "far faster than the 20 Hz GCS link and trips "
+                             "--link-timeout spuriously. Also makes the GUI "
+                             "view watchable in real time.")
     parser.add_argument("--initial-roll", type=float, default=0.20,
                         help="mock initial roll in rad")
     parser.add_argument("--initial-pitch", type=float, default=-0.12,
