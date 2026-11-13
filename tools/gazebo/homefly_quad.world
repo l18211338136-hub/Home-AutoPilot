@@ -10,20 +10,24 @@
       gz sim -s -v4 tools/gazebo/homefly_quad.world
   or let tools/run_wsl_sitl.sh (backend gz) start it for you.
 
-  IMPORTANT: this world has NOT been executed against a real Gazebo install
-  (the development host is Windows). Before the first real SITL run, check:
-    * plugin filenames for your Gazebo release (gz-sim-*-system names vary),
+  NOTES (verified against Gazebo Sim 8 / Harmonic 8.15.0 on WSL2):
+    * plugin filenames for your Gazebo release (gz-sim-*-system names vary).
+      Harmonic 8 needs gz-sim-imu-system for IMU sensors; -s starts paused,
+      so use -r or physics never advances and no IMU is published.
     * the IMU topic must equal the bridge imu topic (default includes the
-      world name "quad"),
-    * commandSubTopic must NOT start with '/' when robotNamespace is set:
-      gz builds `namespace + "/" + commandSubTopic` and AsValidTopic collapses
-      the resulting "//", producing e.g. "homeflyactuators" instead of
-      "/actuators". This world sets no robotNamespace and uses "actuators",
-      so the MulticopterMotorModel plugins subscribe to "/actuators", which is
-      exactly the bridge's default --motor-topic.
-    * mass / inertia / rotor constants / arm geometry for your airframe,
-    * Gazebo's event-driven IMU topic is not hard-lockstepped to HomeFly;
-      see docs/gazebo.md section 4.3 for the pacing caveat.
+      world name "quad").
+    * Motor topic: gz subscribes to AsValidTopic(robotNamespace + "/" +
+      commandSubTopic). AsValidTopic drops BOTH slashes of a "//" pair and
+      does NOT prepend a leading '/' - so a homefly robotNamespace plus
+      "/actuators" became "homeflyactuators" and matched no publisher.
+      This world deliberately leaves robotNamespace UNSET: gz then falls back
+      to the MODEL NAME ("homefly"), so the four MulticopterMotorModel plugins
+      subscribe to "homefly/actuators", which gz-transport normalizes to
+      "/homefly/actuators" - exactly the bridge's default motor topic.
+      If you rename the model, override the bridge motor topic accordingly.
+    * mass / inertia / rotor constants / arm geometry for your airframe.
+    * Pacing is handled by the bridge (one IMU per control cycle with a
+      synthetic 1 kHz timestamp); see docs/gazebo.md sections 4.3 and 8.5.
   See docs/gazebo.md for the HomeFly side of the setup.
 -->
 <sdf version="1.9">

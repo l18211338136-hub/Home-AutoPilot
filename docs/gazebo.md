@@ -89,12 +89,12 @@ python tools/gazebo_bridge.py --self-test
 pip install gz-transport-python gz-msgs-python   # 或使用发行版自带绑定
 python tools/gazebo_bridge.py --backend gz \
     --imu-topic /world/quad/model/homefly/link/body/sensor/imu/imu \
-    --motor-topic /actuators
+    --motor-topic /homefly/actuators
 ```
 
 `tools/gazebo/homefly_quad.world` 是完整可加载的 world（1 ms / 1 kHz 物理步长、地面、4 个 rotor link + revolute joint、IMU 传感器与 4 个 `MulticopterMotorModel` 插件），可直接 `gz sim -s -v4 tools/gazebo/homefly_quad.world`；`tools/gazebo/homefly_quad.sdf` 仍是裸 `<model>` 片段，供你嵌进自己的 world。插件从 `gz.msgs.Actuators.velocity` 取电机转速（rad/s），桥接把 `[0,1]` 油门乘 `--max-rot-velocity`（默认 1000）后填入，按插件的 `<motorNumber>` 索引。
 
-> world 模板只做过 XML 良构性检查，**未在真实 Gazebo 中加载验证**。首次运行请按实际发行版核对插件文件名、IMU `<topic>`（默认含 world 名 `quad`）、`commandSubTopic`（默认 `/actuators`）与机型参数。
+> **电机话题对齐（踩过的坑）**：`MulticopterMotorModel` 订阅的是 `AsValidTopic(robotNamespace + "/" + commandSubTopic)`，而 `AsValidTopic` 会把 `//` 的**两个**斜杠一起删掉、且**不会补前导斜杠**。旧配置 `<robotNamespace>homefly</>` + `<commandSubTopic>/actuators</>` 被拼成 `homefly//actuators` → `homeflyactuators`，桥接发布的 `/actuators` 永远到不了电机插件。现在 world 不设 `robotNamespace`，gz 回退用模型名 `homefly`，插件订阅 `homefly/actuators`（gz-transport 规范化为 `/homefly/actuators`），与桥接默认 `--motor-topic` 一致。**改模型名必须同步改 `--motor-topic`**。首次运行仍请按发行版核对插件文件名、IMU `<topic>`（默认含 world 名 `quad`）与机型参数。
 
 > **Gazebo Sim 8 (Harmonic) 必读**：IMU 传感器由独立的 `gz-sim-imu-system`（`gz::sim::systems::Imu`）创建并发布，`gz-sim-sensors-system` 只管 camera/lidar 等渲染型传感器。world 里必须同时声明两者，否则 `gz topic -l` 里不会出现任何 IMU 话题、桥接 `imu_frames=0`。日志里的 `[Sensors.cc] Waiting for init` 是渲染线程的正常等待，与 IMU 无关。此外 `-s` 启动的 server 默认暂停，必须加 `-r` 才会推进仿真并产生数据。
 
@@ -235,7 +235,7 @@ bash tools/run_wsl_sitl.sh --build                  # 强制原生重编译
 ### 8.5 接真实 Gazebo 前的核对清单
 
 1. `--backend gz` 需要 Python 绑定（`gz-transport-python` / `gz-msgs-python` 或发行版自带），缺失时桥接会给出安装提示；先用 `--backend mock` 确认飞控侧链路 OK。
-2. `homefly_quad.world` 未在真实 Gazebo 加载过：核对插件文件名、IMU `<topic>`、`commandSubTopic`、`maxRotVelocity` 与机型质量 / 惯量 / 臂长。
+2. **电机话题必须与 world 模型名一致**：插件订阅 `homefly/actuators`，桥接默认发布 `/homefly/actuators`；用 `gz topic -l | grep actuators` 和 server 日志里的 `Listening to topic:` 逐字核对。换模型名要同步改 `--motor-topic`。其余按发行版核对插件文件名、IMU `<topic>`、`maxRotVelocity` 与机型质量 / 惯量 / 臂长。
 3. **pacing 已由桥接器保证**：`gz` 后端现在严格锁步——缓冲最新一帧 IMU，每个控制周期只发一帧，时间戳 `seq × period_us` 合成，不受 Gazebo 自身发布速率影响；启动阶段重复发首帧直到收到第一帧电机指令。早期「IMU 洪泛 → `imu_drop` → `ControlOverrun`」的问题已修复（`imu_rx` 与 `motor_tx` 应 1:1）。
 4. 脚本退出时会 kill 记录的 Gazebo / 桥接 PID；若 Gazebo 派生了子进程，用 `pkill -f 'gz sim'` 手动收尾。
 5. 桥接统计里的 `retransmits` 表示稳态等待窗口内没收到电机帧而重发同一 seq，飞控按 seq 去重，不影响结果；Windows 回环偶发抖时会增大并拉长墙钟耗时，仿真时间仍由帧时间戳驱动。
@@ -243,3 +243,48 @@ bash tools/run_wsl_sitl.sh --build                  # 强制原生重编译
 ### 8.6 全 Windows 原生（备选）
 
 Pixi + conda-forge 装 Gazebo Jetty，桥接与飞控都跑在 Windows，UDP 不出宿主，可完全绕开 8.2 的问题；用 `gz sim -s` headless 避开实验版 GUI / OGRE2 的已知缺陷。代价是该平台支持仍是实验性的，且 `gz` 后端的 Python 绑定齐全度未验证。细节以 [Gazebo 官方 Windows 安装页](https://gazebosim.org/docs/harmonic/install_windows) 为准。
+
+### 8.7 WSLg GUI 可视化（三终端闭环）
+
+headless `run_wsl_sitl.sh` 只验证了 **FC ↔ bridge** 的 UDP 闭环：即使 Gazebo 的
+`MulticopterMotorModel` 一个 `Actuators` 都没收到，脚本照样会打印 `SITL run PASS`。
+要看飞机真的被飞控驱动，必须开 GUI 并单独核对电机话题（见 8.7 末尾判据）。
+
+WSLg 下 GUI 与 server 同进程启动（`gz sim -r`，**不要** `-s`）。GUI 卡在反复
+`GUI requesting list of world names...` 是 gz-transport 组播发现问题，先设：
+
+```bash
+export GZ_IP=127.0.0.1
+export LIBGL_ALWAYS_SOFTWARE=1   # WSLg 无 GPU / ogre2 起不来时可选
+```
+
+三个终端，全部在 WSL 侧，先 `cd` 到仓库目录并 `git pull`：
+
+```bash
+# 终端 1：Gazebo GUI + server（-r 必须，否则暂停、无 IMU）
+gz sim -r -v4 tools/gazebo/homefly_quad.world
+
+# 终端 2：桥接（--steps 0 = 不限帧数，看完手动 Ctrl-C）
+python3 tools/gazebo_bridge.py --backend gz --steps 0
+
+# 终端 3：飞控（注意：FC 的 --steps 0 会立刻退出，必须给正整数）
+./build/wsl/src/applications/linux_native/homefly_linux_native \
+    --gazebo --steps 30000 --overrun-factor 10 --gazebo-timeout 10000
+```
+
+**电机话题判据**（这是之前漏掉的一环）：
+
+```bash
+gz topic -l | grep actuators              # 应看到 /homefly/actuators
+gz topic -e -t /homefly/actuators -n 3    # velocity[] 非零 = 桥接确实在发
+```
+
+再对照终端 1 日志里的 `Listening to topic:` 必须与桥接 advertise 的名字一致，
+并在 GUI 视口里看到四个 rotor 随 FC 输出转动、机身姿态收敛。
+
+两条日志无害，不必中断：`No robotNamespace set using entity name.` 是 gz 用模型名
+兜底的正常警告；`Service call timed out for [/world/quad/gui/info]` 在 WSLg 下偶发，
+后续 `MinimalScene` / `ogre2` 仍会继续加载。
+
+> 想贴日志做可复现验证，把终端 2 也改成 `--steps 30000`，与 FC 同步结束。
+> 想一直看就给 FC 一个更大的 `--steps`，终端 2 保持 `--steps 0`。

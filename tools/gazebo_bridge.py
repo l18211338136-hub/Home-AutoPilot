@@ -469,8 +469,15 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
                         help="mock gyro bias in rad/s")
     parser.add_argument("--imu-topic", default="/world/quad/model/homefly/link/body/sensor/imu/imu",
                         help="Gazebo Garden IMU topic")
-    parser.add_argument("--motor-topic", default="/actuators",
-                        help="Gazebo Actuators topic (gz.msgs.Actuators)")
+    parser.add_argument("--motor-topic", default="/homefly/actuators",
+                        help="Gazebo Actuators topic (gz.msgs.Actuators). The "
+                             "MulticopterMotorModel plugin subscribes to "
+                             "AsValidTopic(robotNamespace + '/' + "
+                             "commandSubTopic); with no robotNamespace gz "
+                             "falls back to the MODEL NAME, so 'homefly' + "
+                             "'actuators' -> homefly/actuators -> "
+                             "/homefly/actuators. Rename the model? Change "
+                             "this too.")
     parser.add_argument("--max-rot-velocity", type=float, default=1000.0,
                         help="maps normalized [0,1] thrust to rad/s Actuators.velocity")
     parser.add_argument("--axis-map", default="0,1,2",
