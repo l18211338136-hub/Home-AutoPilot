@@ -418,10 +418,9 @@ downloading resources`），把机场模型丢掉。两个 `export` 都不会跨
 必须在起 `gz sim` 的那个终端里设；`GZ_IP` 也要给终端 2 的 bridge 设上。
 
 GUI 起来的判据：`Entity Tree` 里能同时看到 `runway` 与 `homefly`，左下角仿真
-时间在递增。此时若视口只有网格、看不到飞机，在 `Entity Tree` 里双击
-`homefly`（或右键 Move to / Follow）把相机对到原点 `(0,0,0.2)`；仍只有网格
-就加 `export LIBGL_ALWAYS_SOFTWARE=1` 后重启终端 1（WSLg 无 GPU 时 ogre2
-可能起不来）。
+时间在递增。原版机场跑道是 1500 × 100 m，而飞机只有 0.3 m，默认 GUI 相机
+（约 8 m 外俯视原点）很容易把它淹没在跑道贴图里 —— 出现「模型在、飞机看不见」
+时按 8.9.1 处理，**不要**往 world SDF 里加 `<gui>` 段。
 
 **切换方式**：把 8.7 / 8.8 里终端 1 的 world 路径换掉，其余三个终端不变：
 
@@ -455,3 +454,87 @@ roll / pitch / yaw_rate / throttle，没有位置估计、避障或航点导航�
 Failsafe（粘性，可在 GCS 输 `arm` 或 `disarm` 恢复）；做纯净的姿态回归请用
 默认的 `homefly_quad.world`。维护提示：四个文件里的 `homefly` 模型是同一份拷贝，
 调整质量 / 惯量 / 电机常数时需要同步改四处；切换场景只需换 world 路径。
+
+### 8.9.1 「模型在、飞机看不见」：GUI 相机对焦
+
+**现象**：`Entity Tree` 里 `runway` 和 `homefly` 都在，左下角仿真时间在递增，
+但 3D 视口里只有跑道 / 网格，看不到飞机。这不是加载失败 —— 飞机已经被
+`SceneBroadcaster` 发给 GUI 了，否则 Entity Tree 里不会出现它。
+
+**根因（三条叠加）**：
+
+1. Gazebo Sim 8 的默认用户相机 pose 写在 `~/.gz/sim/8/gui.config` 的
+   `MinimalScene` 插件里（约 `-6 0 6 0 0.5 0`，即 8 m 外俯视原点），**是固定值，
+   不会按场景包围盒自适应**。
+2. 原版 `model://runway` 的跑道 visual 是 `<plane><size>1500 100</size></plane>`
+   并绕 Z 转 90°，外加 `airfield.dae` 网格；而默认 `homefly_quad.world` 与迷宫的
+   地面只有 `100 100`。场景尺度放大十几倍，相机却没跟着拉近。
+3. 飞机是 0.3 m 级、深灰机身 + 红色顶盖，落在深灰跑道 PBR 贴图上对比度低，
+   从 8 m 外只剩几个像素。
+
+三者叠加就是「看得见跑道、找不到飞机」。`homefly_airport_lite.world` 的
+`1000 1000` 草地同样会触发，只是程度轻一些。
+
+> ⚠️ **不要往 world SDF 里加 `<gui>` 段来改初始相机**：Gazebo Sim 里 world 的
+> `<gui>` 会**整体覆盖**默认 GUI 配置（不是追加 / 合并），`Entity Tree`、播放按钮、
+> `View Angle` 等插件全部消失，窗口变成空白。网上常见的
+> `<gui><plugin filename="MinimalScene"><camera_pose>...` 写法正是这个坑。
+> 要么走运行时对焦，要么用 `--gui-config` 指向一份**完整**的 GUI 配置。
+
+| 层级 | 做法 | 改文件 | 适用 |
+| --- | --- | --- | --- |
+| L0 | GUI 内右键对焦 | 否 | 临时看一眼 |
+| L1 | `tools/gz_focus_homefly.sh` | 否（脚本已在仓库） | 每次开 GUI 后一条命令、可写进自己的启动脚本 |
+| L2 | `--gui-config` 自定义完整配置 | 是（用户本机） | 想让相机 pose 永久固定 |
+
+**L0 — GUI 内（零命令）**：右侧 `Entity Tree` 展开 `quad` → 找到 `homefly` →
+右键 → `Move to`（双击模型通常等效），相机会平滑移到能看见该实体的位置。
+打杆遥控时改用 `Follow`（按 `Esc` 退出跟随），飞机会一直留在视口中央。
+
+**L1 — 命令行对焦（推荐，可重复）**：`gz-gui` 的 `CameraTracking` 插件常驻提供
+`/gui/move_to`（`StringMsg → Boolean`，按实体名自动取景）与 `/gui/follow`。
+脚本封装了 `GZ_IP` 与服务可用性检查：
+
+```bash
+# 任意终端，GUI 窗口完全起来之后执行（不必是终端 1）
+bash tools/gz_focus_homefly.sh                # 对焦一次
+bash tools/gz_focus_homefly.sh --follow       # 跟随飞机（配合 8.8 的 GCS 打杆）
+```
+
+脚本内部实际执行：
+
+```bash
+GZ_IP=127.0.0.1 gz service -s /gui/move_to \
+  --reqtype gz.msgs.StringMsg --reptype gz.msgs.Boolean \
+  --timeout 3000 --req 'data: "homefly"'
+```
+
+`GZ_IP=127.0.0.1` 必须和终端 1 一致，脚本未设置时会自动补上。四终端遥控时把
+这条命令插在 T1 起来之后、T4 开始打杆之前即可。
+
+**L2 — 持久化初始相机（可选）**：从 WSL 里复制默认配置、只改 `camera_pose`
+一行（配置随 Gazebo 版本变化，故不塞进仓库）：
+
+```bash
+cp ~/.gz/sim/8/gui.config ~/gui_homefly.config
+# 编辑 MinimalScene 插件里的 <camera_pose>，改成近距离俯视原点，例如：
+#   <camera_pose>-1.2 -1.2 0.9 0 0.4 0.8</camera_pose>
+gz sim -r -v4 --gui-config ~/gui_homefly.config tools/gazebo/homefly_airport.world
+```
+
+`--gui-config` 必须指向**完整**配置，只写一个 `MinimalScene` 插件同样会让 GUI
+变空白。
+
+**对焦后仍看不到 → 是渲染问题，不是相机问题**：
+
+```bash
+# 相机是否真的动了（有输出说明 GUI 插件活着）
+GZ_IP=127.0.0.1 gz topic -e -t /gui/camera/pose -n 1
+
+# 服务是否都在线（应能看到 /gui/move_to、/gui/move_to/pose、/gui/follow）
+GZ_IP=127.0.0.1 gz service -l | grep '/gui/'
+```
+
+若服务齐全、相机 pose 也变了但视口仍空白，在终端 1 加
+`export LIBGL_ALWAYS_SOFTWARE=1` 后重启 `gz sim`（WSLg 无 GPU 时 ogre2 带 PBR
+贴图可能起不来）。这条对 `homefly_quad.world` 同样适用，只是空场不容易暴露。

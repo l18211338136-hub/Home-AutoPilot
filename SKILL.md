@@ -73,6 +73,7 @@ tools/
 ├── hfl_dump.py                            离线校验 / CSV 导出 / 截断检测
 ├── gazebo_bridge.py                       mock / gz / classic 三后端 SITL 桥接进程
 ├── run_wsl_sitl.sh                        WSL2 一键 SITL（构建 + 桥接 + Gazebo + .hfl 校验）
+├── gz_focus_homefly.sh                    GUI 相机对焦（/gui/move_to，机场场景找飞机）
 └── gazebo/
     ├── homefly_quad.sdf                   Gazebo Garden Quad-X 模型片段（topic 布局已与 world 对齐）
     ├── homefly_quad.world                 默认 world（1 kHz 物理、rotor joints、IMU、4 电机插件）
@@ -99,7 +100,7 @@ src/applications/linux_native/
 
 核心约束：飞控不链接 Gazebo / protobuf / ZeroMQ；控制循环只读写 SPSC 环，socket I/O 只发生在低优先级任务；每个控制周期恰好一帧 IMU / 一帧电机，仿真时间步长必须等于 control_period_us；GazeboClock 由「被消费的 IMU 帧时间戳」推进，禁止用宿主墙钟。线协议变更必须同步更新桥接脚本与 golden 向量测试。
 
-部署约束：外部仿真器、桥接进程与飞控必须处于同一 UDP 网络命名空间。WSL2 的 `localhostForwarding` 只转发 TCP，Windows 的 `.exe` 与 WSL2 桥接走 `127.0.0.1` UDP 必然失败；在 WSL2 中必须把飞控重新编译成 Linux 原生 ELF，三者全部放 Linux 侧（或全部放 Windows 侧）。一键入口 `tools/run_wsl_sitl.sh`，四个可切换 world（默认空场 / ArduPilot 迷宫 / 逐字节原版 ArduPilot 机场 / 轻量机场，均保持 `world=quad` 与 `model=homefly` 以维持桥接话题契约）；飞机外观统一为 Iris 风格内联几何，只替换 `<visual>`，`inertial` / `collision` / link / sensor / 四个电机插件名字全部不变，桥接一行不改。原版机场用 `model://runway`，脚本自动导出 `GZ_SIM_RESOURCE_PATH`，手工起 GUI 需自行导出，细节见 `docs/gazebo.md` 第 8.9 节。
+部署约束：外部仿真器、桥接进程与飞控必须处于同一 UDP 网络命名空间。WSL2 的 `localhostForwarding` 只转发 TCP，Windows 的 `.exe` 与 WSL2 桥接走 `127.0.0.1` UDP 必然失败；在 WSL2 中必须把飞控重新编译成 Linux 原生 ELF，三者全部放 Linux 侧（或全部放 Windows 侧）。一键入口 `tools/run_wsl_sitl.sh`，四个可切换 world（默认空场 / ArduPilot 迷宫 / 逐字节原版 ArduPilot 机场 / 轻量机场，均保持 `world=quad` 与 `model=homefly` 以维持桥接话题契约）；飞机外观统一为 Iris 风格内联几何，只替换 `<visual>`，`inertial` / `collision` / link / sensor / 四个电机插件名字全部不变，桥接一行不改。原版机场用 `model://runway`，脚本自动导出 `GZ_SIM_RESOURCE_PATH`，手工起 GUI 需自行导出，细节见 `docs/gazebo.md` 第 8.9 节。机场 world 里 0.3 m 的飞机容易被 1500 × 100 m 跑道淹没：GUI 默认相机 pose 来自 `~/.gz/sim/8/gui.config`、不随场景尺度自适应，用 `tools/gz_focus_homefly.sh`（封装 `/gui/move_to` service，`--follow` 跟随）对焦；**不要**往 world SDF 加 `<gui>` 段，它会整体覆盖默认 GUI 配置导致窗口空白，详见 8.9.1。
 
 WiFi 地面站控制链路（上行指令，与 SITL 同一套架构模式）：
 ```
