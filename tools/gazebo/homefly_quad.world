@@ -15,7 +15,12 @@
     * plugin filenames for your Gazebo release (gz-sim-*-system names vary),
     * the IMU topic must equal the bridge imu topic (default includes the
       world name "quad"),
-    * commandSubTopic must equal the bridge motor topic (default /actuators),
+    * commandSubTopic must NOT start with '/' when robotNamespace is set:
+      gz builds `namespace + "/" + commandSubTopic` and AsValidTopic collapses
+      the resulting "//", producing e.g. "homeflyactuators" instead of
+      "/actuators". This world sets no robotNamespace and uses "actuators",
+      so the MulticopterMotorModel plugins subscribe to "/actuators", which is
+      exactly the bridge's default --motor-topic.
     * mass / inertia / rotor constants / arm geometry for your airframe,
     * Gazebo's event-driven IMU topic is not hard-lockstepped to HomeFly;
       see docs/gazebo.md section 4.3 for the pacing caveat.
@@ -151,48 +156,44 @@
 
       <plugin filename="gz-sim-multicopter-motor-model-system"
               name="gz::sim::systems::MulticopterMotorModel">
-        <robotNamespace>homefly</robotNamespace>
         <jointName>rotor_0_joint</jointName><linkName>rotor_0</linkName>
         <turningDirection>ccw</turningDirection>
         <timeConstantUp>0.0125</timeConstantUp><timeConstantDown>0.025</timeConstantDown>
         <maxRotVelocity>1000</maxRotVelocity><motorConstant>8.54858e-06</motorConstant>
-        <momentConstant>0.016</momentConstant><commandSubTopic>/actuators</commandSubTopic>
+        <momentConstant>0.016</momentConstant><commandSubTopic>actuators</commandSubTopic>
         <motorNumber>0</motorNumber><rotorDragCoefficient>8.06428e-05</rotorDragCoefficient>
         <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
         <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim><motorType>velocity</motorType>
       </plugin>
       <plugin filename="gz-sim-multicopter-motor-model-system"
               name="gz::sim::systems::MulticopterMotorModel">
-        <robotNamespace>homefly</robotNamespace>
         <jointName>rotor_1_joint</jointName><linkName>rotor_1</linkName>
         <turningDirection>cw</turningDirection>
         <timeConstantUp>0.0125</timeConstantUp><timeConstantDown>0.025</timeConstantDown>
         <maxRotVelocity>1000</maxRotVelocity><motorConstant>8.54858e-06</motorConstant>
-        <momentConstant>0.016</momentConstant><commandSubTopic>/actuators</commandSubTopic>
+        <momentConstant>0.016</momentConstant><commandSubTopic>actuators</commandSubTopic>
         <motorNumber>1</motorNumber><rotorDragCoefficient>8.06428e-05</rotorDragCoefficient>
         <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
         <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim><motorType>velocity</motorType>
       </plugin>
       <plugin filename="gz-sim-multicopter-motor-model-system"
               name="gz::sim::systems::MulticopterMotorModel">
-        <robotNamespace>homefly</robotNamespace>
         <jointName>rotor_2_joint</jointName><linkName>rotor_2</linkName>
         <turningDirection>cw</turningDirection>
         <timeConstantUp>0.0125</timeConstantUp><timeConstantDown>0.025</timeConstantDown>
         <maxRotVelocity>1000</maxRotVelocity><motorConstant>8.54858e-06</motorConstant>
-        <momentConstant>0.016</momentConstant><commandSubTopic>/actuators</commandSubTopic>
+        <momentConstant>0.016</momentConstant><commandSubTopic>actuators</commandSubTopic>
         <motorNumber>2</motorNumber><rotorDragCoefficient>8.06428e-05</rotorDragCoefficient>
         <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
         <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim><motorType>velocity</motorType>
       </plugin>
       <plugin filename="gz-sim-multicopter-motor-model-system"
               name="gz::sim::systems::MulticopterMotorModel">
-        <robotNamespace>homefly</robotNamespace>
         <jointName>rotor_3_joint</jointName><linkName>rotor_3</linkName>
         <turningDirection>ccw</turningDirection>
         <timeConstantUp>0.0125</timeConstantUp><timeConstantDown>0.025</timeConstantDown>
         <maxRotVelocity>1000</maxRotVelocity><motorConstant>8.54858e-06</motorConstant>
-        <momentConstant>0.016</momentConstant><commandSubTopic>/actuators</commandSubTopic>
+        <momentConstant>0.016</momentConstant><commandSubTopic>actuators</commandSubTopic>
         <motorNumber>3</motorNumber><rotorDragCoefficient>8.06428e-05</rotorDragCoefficient>
         <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
         <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim><motorType>velocity</motorType>
