@@ -401,13 +401,27 @@ FC 日志 `frames_received` 持续增长、`link_lost=no`、`mode=stabilize`；
 export GZ_SIM_RESOURCE_PATH="$ROOT/tools/gazebo/models${GZ_SIM_RESOURCE_PATH:+:$GZ_SIM_RESOURCE_PATH}"
 ```
 
-手工起 GUI（8.7 / 8.8 的终端 1）时须自己在同一个终端先导出，否则 gz 报
-`Unable to find uri[model://runway]` 并把机场模型丢掉：
+手工起 GUI（8.7 / 8.8 的终端 1）时须自己在**同一个终端**同时导出两项，
+缺一不可：
 
 ```bash
+export GZ_IP=127.0.0.1
 export GZ_SIM_RESOURCE_PATH="$PWD/tools/gazebo/models${GZ_SIM_RESOURCE_PATH:+:$GZ_SIM_RESOURCE_PATH}"
 gz sim -r -v4 tools/gazebo/homefly_airport.world
 ```
+
+`GZ_IP` 是 8.7 的 WSLg 组播发现必需项，机场场景同样要设；漏了会一直刷
+`GUI requesting list of world names...`，GUI 连不上 server，`Entity Tree` 是空的。
+漏了 `GZ_SIM_RESOURCE_PATH` 则 gz 报 `Unable to find uri[model://runway]`，或
+试图在线下载该模型、server 卡在加载资源（日志提示 `server may be busy
+downloading resources`），把机场模型丢掉。两个 `export` 都不会跨终端继承，
+必须在起 `gz sim` 的那个终端里设；`GZ_IP` 也要给终端 2 的 bridge 设上。
+
+GUI 起来的判据：`Entity Tree` 里能同时看到 `runway` 与 `homefly`，左下角仿真
+时间在递增。此时若视口只有网格、看不到飞机，在 `Entity Tree` 里双击
+`homefly`（或右键 Move to / Follow）把相机对到原点 `(0,0,0.2)`；仍只有网格
+就加 `export LIBGL_ALWAYS_SOFTWARE=1` 后重启终端 1（WSLg 无 GPU 时 ogre2
+可能起不来）。
 
 **切换方式**：把 8.7 / 8.8 里终端 1 的 world 路径换掉，其余三个终端不变：
 
