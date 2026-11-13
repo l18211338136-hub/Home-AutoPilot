@@ -333,8 +333,10 @@ gz sim -r -v4 tools/gazebo/homefly_quad.world
 python3 tools/gazebo_bridge.py --backend gz --realtime --steps 0 --timeout 20
 
 # 3 飞控（--gazebo 与 --wifi 可共存；link-timeout 放宽到 2 s 抗 WSL2 抖动）
+#    --steps 300000 ≈ 5 min：bridge --realtime 下每步 1 ms，原来的 30000 只有
+#    30 s，跑完 FC 打印 result 就退出；切终端 / 开 GCS 很容易错过这个窗口。
 ./build/wsl/src/applications/linux_native/homefly_linux_native \
-    --gazebo --wifi --link-timeout 2000 --steps 30000 \
+    --gazebo --wifi --link-timeout 2000 --steps 300000 \
     --overrun-factor 10 --gazebo-timeout 10000
 
 # 4 地面站（最后启动；--count 0 持续发送，--interactive 读 stdin）
@@ -352,7 +354,7 @@ arm / disarm     # 手动上锁 / 解锁
 q                # 退出（自动发 DISARM）
 ```
 
-**两个容易踩的判定细节**：
+**三个容易踩的判定细节**：
 
 1. GCS 必须先发 ARM 才能进 `Stabilize`（无 `--wifi` 时 hardcoded 的 `arm_request`
    会被 `latest_setpoint()` 取代）。
@@ -362,6 +364,13 @@ q                # 退出（自动发 DISARM）
    （`roll 0` / `pitch 0` / `yaw 0`）等姿态收敛，并**等 FC 打印 `result` 之后
    再在 GCS 输 `q`**，否则最后的 DISARM 会让 mode 变成 `Disarmed` 而 FAIL。
    想缩短一轮把终端 3 的 `--steps` 调小（10000 ≈ 10 s）。
+3. **GCS 打杆 ≠ FC 收到**：UDP 无连接，`wifi_gcs.py` 一启动就自动 ARM
+   （`wifi_gcs.py:110`）、再按 20 Hz 持续发 SETPOINT（`:179`），但没人收就是零。
+   飞机不动先按序确认：`ps aux | grep -E 'gazebo_bridge|homefly_linux_native'`、
+   T3 日志 `frames_received` 是否增长 / `link_lost=no` / `mode=stabilize`、
+   `gz topic -e -t /homefly/actuators -n 3` 的 velocity 是否非零。若 T3 已经打印
+   `result:`（`cycles=N/N`），说明 FC 跑完 `--steps` 退出了 —— 重启 T3 并把 T4
+   **紧跟在 T3 之后**启动，别中间去切窗口。
 
 **验收看这些，不要只看 `result`**：GUI 视口里飞机随打杆实时倾斜/加减速；
 FC 日志 `frames_received` 持续增长、`link_lost=no`、`mode=stabilize`；
