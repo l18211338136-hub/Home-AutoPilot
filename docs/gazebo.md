@@ -235,7 +235,7 @@ bash tools/run_wsl_sitl.sh --build                  # 强制原生重编译
 
 1. `--backend gz` 需要 Python 绑定（`gz-transport-python` / `gz-msgs-python` 或发行版自带），缺失时桥接会给出安装提示；先用 `--backend mock` 确认飞控侧链路 OK。
 2. `homefly_quad.world` 未在真实 Gazebo 加载过：核对插件文件名、IMU `<topic>`、`commandSubTopic`、`maxRotVelocity` 与机型质量 / 惯量 / 臂长。
-3. **pacing 仍是已知边界**：`gz` 后端是事件驱动适配桩，Gazebo 的 IMU 话题与飞控不是硬锁步（见 4.3）。正式使用建议写 Gazebo system 插件按 `control_period_us` 单步推进，或让桥接丢弃积压帧只保留最新一帧；否则宿主机负载会表现为 `imu_drop` / `ControlOverrun`。
+3. **pacing 已由桥接器保证**：`gz` 后端现在严格锁步——缓冲最新一帧 IMU，每个控制周期只发一帧，时间戳 `seq × period_us` 合成，不受 Gazebo 自身发布速率影响；启动阶段重复发首帧直到收到第一帧电机指令。早期「IMU 洪泛 → `imu_drop` → `ControlOverrun`」的问题已修复（`imu_rx` 与 `motor_tx` 应 1:1）。
 4. 脚本退出时会 kill 记录的 Gazebo / 桥接 PID；若 Gazebo 派生了子进程，用 `pkill -f 'gz sim'` 手动收尾。
 5. 桥接统计里的 `retransmits` 表示稳态等待窗口内没收到电机帧而重发同一 seq，飞控按 seq 去重，不影响结果；Windows 回环偶发抖时会增大并拉长墙钟耗时，仿真时间仍由帧时间戳驱动。
 
