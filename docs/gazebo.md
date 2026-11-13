@@ -272,6 +272,22 @@ python3 tools/gazebo_bridge.py --backend gz --steps 0
     --gazebo --steps 30000 --overrun-factor 10 --gazebo-timeout 10000
 ```
 
+**启动顺序（比话题更容易踩）**：GUI 下 Gazebo 加载慢，physics 未推进时 IMU 会先发出
+一帧 `linear_acceleration` 全零的样本。HomeFly 的 `validate_imu()` 要求
+`accel_norm ∈ [0.5g, 2g]`，零帧会触发 `InvalidImuData`；而 Failsafe 是**粘性**的
+（无 `--wifi` 时每周期只发 `ArmRequest`，该事件在 Failsafe 态无效，且没有
+`DisarmRequest`），于是整个 run 锁死在 `mode=failsafe / motors_zero=yes`，即使链路
+指标 `imu_rx` / `motor_tx` 全部跑满、`imu_drop=0` 也照样 `result: FAIL`。
+桥接现已过滤物理上不合理的 IMU 帧、只锁存有效样本，但**必须先确认 Gazebo 在跑**
+（GUI 里仿真时间在走、或按了播放），再启动 bridge 和 FC：
+
+```bash
+gz topic -e -t /world/quad/clock -n 2                                     # sim 时间应递增
+gz topic -e -t /world/quad/model/homefly/link/body/sensor/imu/imu -n 2    # accel 约 9.81 m/s²
+```
+
+若 Gazebo 启动较慢、bridge 报 `no IMU sample`，加 `--timeout 20`（启动等待与空闲超时共用该值）。
+
 **电机话题判据**（这是之前漏掉的一环）：
 
 ```bash

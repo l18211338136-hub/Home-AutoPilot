@@ -385,9 +385,20 @@ def run_gz(args: argparse.Namespace, flavor: str) -> int:
         linear = getattr(msg, "linear_acceleration", None)
         if angular is None or linear is None:
             return
+        gyro = axis_remap((angular.x, angular.y, angular.z), order, signs)
+        accel = axis_remap((linear.x, linear.y, linear.z), order, signs)
+        # Gazebo emits a zero-filled IMU before physics advances (paused world
+        # or a slow GUI startup). HomeFly's validate_imu() requires accel_norm
+        # in [0.5g, 2g]; forwarding that frame trips InvalidImuData and, because
+        # Failsafe is sticky (no DisarmRequest without --wifi), locks the entire
+        # run in mode=failsafe with motors_zero=yes. Only latch plausible samples
+        # so the FC starts on real sensor data instead of a startup artifact.
+        accel_norm = math.sqrt(sum(value * value for value in accel))
+        if accel_norm < 0.5 * GRAVITY or accel_norm > 2.0 * GRAVITY:
+            return
         # Buffer only: actual wire emission is driven by the control loop.
-        latest["gyro"] = axis_remap((angular.x, angular.y, angular.z), order, signs)
-        latest["accel"] = axis_remap((linear.x, linear.y, linear.z), order, signs)
+        latest["gyro"] = gyro
+        latest["accel"] = accel
         latest["valid"] = True
 
     if node is not None:
