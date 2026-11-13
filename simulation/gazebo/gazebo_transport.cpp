@@ -9,6 +9,20 @@ namespace
 {
 constexpr uint32_t kTaskBudget = 16u;
 constexpr auto kIdleSleep = std::chrono::microseconds(100);
+
+// Wrap-aware sequence comparison: true when `current` is strictly newer than
+// `previous` under 32-bit modular arithmetic (half-range signed difference).
+// A plain `current <= previous` test breaks after the uint32_t sequence wraps
+// (~49 days at 1 kHz), permanently rejecting newer frames until the producer
+// climbs back above the old high-water mark (HomeFly Flight Safety & Code Review
+// skill 3.10).
+inline bool is_newer_sequence(
+	uint32_t current,
+	uint32_t previous
+) noexcept
+{
+	return static_cast<int32_t>(current - previous) > 0;
+}
 }
 
 GazeboTransport::GazeboTransport() noexcept = default;
@@ -39,6 +53,7 @@ bool GazeboTransport::start(
 	_motor_sent.store(0u, std::memory_order_relaxed);
 	_motor_dropped.store(0u, std::memory_order_relaxed);
 	_send_failures.store(0u, std::memory_order_relaxed);
+	_have_seq.store(false, std::memory_order_relaxed);
 	_stop.store(false, std::memory_order_release);
 	_running.store(true, std::memory_order_release);
 
@@ -115,14 +130,27 @@ void GazeboTransport::task() noexcept
 
 			if (length != sizeof(GazeboFrame) ||
 				!gazebo_frame_validate(frame) ||
-				frame.type != static_cast<uint8_t>(GazeboFrameType::Imu) ||
-				frame.seq <= _last_seq.load(std::memory_order_relaxed))
+				frame.type != static_cast<uint8_t>(GazeboFrameType::Imu))
 			{
 				_imu_rejected.fetch_add(1u, std::memory_order_relaxed);
 				continue;
 			}
 
-			_last_seq.store(frame.seq, std::memory_order_relaxed);
+			// Drop stale / duplicate / wrapped-around sequence numbers. Enforce
+			// ordering only after the first accepted frame so any starting value
+			// (including 0) is admitted, and use a wrap-aware comparison so the
+			// stream keeps working across the uint32_t sequence rollover.
+			const uint32_t seq = frame.seq;
+			const uint32_t last = _last_seq.load(std::memory_order_relaxed);
+			if (_have_seq.load(std::memory_order_relaxed) &&
+				!is_newer_sequence(seq, last))
+			{
+				_imu_rejected.fetch_add(1u, std::memory_order_relaxed);
+				continue;
+			}
+
+			_have_seq.store(true, std::memory_order_relaxed);
+			_last_seq.store(seq, std::memory_order_relaxed);
 
 			if (_imu_in.push(frame))
 			{

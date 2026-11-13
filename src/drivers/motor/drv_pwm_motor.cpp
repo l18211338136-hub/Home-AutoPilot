@@ -1,5 +1,7 @@
 #include "drivers/motor/drv_pwm_motor.hpp"
 
+#include <cmath>
+
 namespace homefly
 {
 
@@ -61,6 +63,17 @@ bool PwmMotor::write(
 	for (uint8_t channel = 0; channel < count; ++channel)
 	{
 		float value = outputs[channel];
+
+		// A non-finite thrust command must never reach the ESC. A NaN/Inf slips
+		// past the <0 / >1 clamp (both comparisons are false) and would produce
+		// an undefined pulse width. Treat it as a driver fault: drop to the safe
+		// (disarmed, minimum-pulse) state and stop emitting
+		// (HomeFly Flight Safety & Code Review skill 3.9).
+		if (!std::isfinite(value))
+		{
+			disarm();
+			return false;
+		}
 
 		if (value < 0.0f)
 		{

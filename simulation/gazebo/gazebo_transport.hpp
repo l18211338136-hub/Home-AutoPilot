@@ -68,6 +68,7 @@ private:
 	std::atomic<bool> _stop{true};
 	std::atomic<bool> _running{false};
 	std::atomic<uint32_t> _last_seq{0};
+	std::atomic<bool> _have_seq{false}; // becomes true after the first accepted frame
 	std::atomic<uint32_t> _imu_received{0};
 	std::atomic<uint32_t> _imu_rejected{0};
 	std::atomic<uint32_t> _imu_dropped{0};

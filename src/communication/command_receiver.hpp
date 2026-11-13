@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+#include <cstddef>
 #include <cstdint>
 
 #include "communication/i_link.hpp"
@@ -8,6 +10,20 @@
 
 namespace homefly
 {
+
+// Cross-thread command state, protected by a seqlock in CommandReceiver:
+// poll() (low-priority task) is the only writer and latest_setpoint() /
+// link_lost() (control loop) are the only readers. The struct must be trivially
+// copyable so the seqlock reader can take a consistent snapshot without a mutex.
+struct SharedCommandState
+{
+	Setpoint setpoint{};
+	bool received{false};
+	uint64_t last_rx_us{0};
+};
+
+static_assert(std::is_trivially_copyable<SharedCommandState>::value,
+	"SharedCommandState must be trivially copyable for the seqlock snapshot");
 
 // Parses uplink command frames from a ground station (over an ILink, e.g. a UDP
 // socket) and exposes them as a latched Setpoint.
@@ -23,6 +39,14 @@ namespace homefly
 // attitude/throttle targets and clears any pending disarm request (the pilot is
 // clearly still present). On link loss (no frame within link_timeout_us) the
 // receiver forces a disarm request, so the vehicle cannot keep flying blind.
+//
+// Thread safety (see HomeFly Flight Safety & Code Review skill 3.1):
+//   poll() and latest_setpoint()/link_lost() run on different threads with no
+//   shared mutex. All shared fields live in _state and are guarded by a seqlock
+//   (_seq): the writer marks an odd sequence before writing and an even sequence
+//   after; readers retry if the sequence changed or a write was in progress.
+//   This gives a consistent snapshot of the whole struct with no lock in the
+//   1 kHz control loop.
 class CommandReceiver
 {
 public:
@@ -41,18 +65,23 @@ public:
 
 	bool link_lost() const noexcept;
 
-	uint32_t frames_received() const noexcept { return _frames_received; }
-	uint32_t parse_errors() const noexcept { return _parse_errors; }
+	uint32_t frames_received() const noexcept { return _frames_received.load(std::memory_order_relaxed); }
+	uint32_t parse_errors() const noexcept { return _parse_errors.load(std::memory_order_relaxed); }
 
 private:
+	// Seqlock helpers. Writer: increment to odd, fence, copy, fence, increment
+	// to even. Reader: read seq, if odd spin/yield, fence, copy, fence, re-read
+	// seq and retry on mismatch.
+	void write_state_(const SharedCommandState& state) noexcept;
+	SharedCommandState read_state_() const noexcept;
+
 	ILink& _link;
 	IClock& _clock;
 	uint32_t _link_timeout_us;
-	Setpoint _setpoint{};
-	uint64_t _last_rx_us{0};
-	bool _received{false};
-	uint32_t _frames_received{0};
-	uint32_t _parse_errors{0};
+	mutable std::atomic<uint32_t> _seq{0};
+	SharedCommandState _state{};
+	std::atomic<uint32_t> _frames_received{0};
+	std::atomic<uint32_t> _parse_errors{0};
 };
 
 } // namespace homefly

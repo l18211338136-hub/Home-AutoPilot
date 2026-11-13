@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cstdint>
 
 #include "drivers/motor/drv_pwm_motor.hpp"
@@ -138,6 +139,27 @@ TEST(PwmMotor, RejectsInvalidOutputCount)
 	const float outputs[5]{0.5f, 0.5f, 0.5f, 0.5f, 0.5f};
 	EXPECT_FALSE(motor.write(outputs, 5));
 	EXPECT_FALSE(motor.write(nullptr, 4));
+}
+
+TEST(PwmMotor, RejectsNonFiniteOutput)
+{
+	RecordingPwm pwm;
+	PwmMotor motor(pwm, 1000u, 2000u);
+	motor.initialize();
+	EXPECT_TRUE(motor.arm());
+
+	// A NaN thrust on any channel must be treated as a driver fault: the call
+	// fails, the driver disarms and stops emitting pulses
+	// (HomeFly Flight Safety & Code Review skill 3.9).
+	const float bad[4]{0.5f, std::nanf(""), 0.5f, 0.5f};
+	EXPECT_FALSE(motor.write(bad, 4));
+	EXPECT_FALSE(motor.is_armed());
+	EXPECT_EQ(pwm.pulse(0), RecordingPwm::kMinPulse);
+
+	// After a fault the driver must recover to a safe, valid state.
+	EXPECT_TRUE(motor.arm());
+	const float ok[4]{0.5f, 0.5f, 0.5f, 0.5f};
+	EXPECT_TRUE(motor.write(ok, 4));
 }
 
 HOMEFLY_TEST_MAIN()

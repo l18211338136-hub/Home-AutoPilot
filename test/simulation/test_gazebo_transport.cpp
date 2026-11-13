@@ -149,6 +149,36 @@ TEST(GazeboTransport, WaitTimesOutWithoutFrames)
 	transport.stop();
 }
 
+TEST(GazeboTransport, AcceptsWrappedSequenceNumbers)
+{
+	UdpSocket peer;
+	EXPECT_TRUE(peer.open(14671u, "127.0.0.1", 14670u));
+
+	GazeboTransport transport;
+	EXPECT_TRUE(transport.start(test_config(14670u, 14671u)));
+
+	// Drive the 32-bit sequence up to the wrap boundary, then wrap, then send a
+	// duplicate of the wrapped frame. With the old `seq <= last_seq` comparison
+	// the wrapped frame (1) would be rejected forever; with the wrap-aware
+	// comparison it must be accepted (HomeFly Flight Safety & Code Review 3.10).
+	const GazeboFrame f_wrap_hi = gazebo_frame_make_imu(0xFFFFFFFEu, 1000u, sample());
+	const GazeboFrame f_wrap_top = gazebo_frame_make_imu(0xFFFFFFFFu, 1000u, sample());
+	const GazeboFrame f_wrapped = gazebo_frame_make_imu(1u, 1000u, sample());
+	const GazeboFrame f_dup = gazebo_frame_make_imu(1u, 1000u, sample());
+	EXPECT_TRUE(peer.send(&f_wrap_hi, sizeof(GazeboFrame)));
+	EXPECT_TRUE(peer.send(&f_wrap_top, sizeof(GazeboFrame)));
+	EXPECT_TRUE(peer.send(&f_wrapped, sizeof(GazeboFrame)));
+	EXPECT_TRUE(peer.send(&f_dup, sizeof(GazeboFrame)));
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(100));
+	const GazeboTransportStats stats = transport.stats();
+	EXPECT_EQ(stats.imu_received, 3u); // three accepted: FE, FF, wrapped 1
+	EXPECT_EQ(stats.imu_rejected, 1u);  // the duplicate of wrapped 1
+
+	transport.stop();
+	peer.close();
+}
+
 TEST(GazeboHal, ClockTracksConsumedImuTimestamp)
 {
 	GazeboClock clock;
