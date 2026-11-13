@@ -159,8 +159,9 @@ python tools/gazebo_bridge.py --backend gz \
 
 ## 7. 已验证与边界
 
-**已在本机端到端验证**（MSVC 19.51 / Windows / mock 桥接）：
+**已在本机端到端验证**（MSVC 19.51 / Windows / mock 桥接，以及 WSL2 Ubuntu 22.04 + Gazebo Harmonic 8.15.0 真实 gz 后端）：
 
+- 真实 Gazebo Harmonic 8.15.0（WSL2 Ubuntu 22.04）：`bash tools/run_wsl_sitl.sh --backend gz` → `SITL run PASS`；`imu_rx=2001 imu_bad=0 imu_drop=0 motor_tx=2000 motor_drop=0`，`mode=stabilize` 全程保持，`.hfl --strict` 校验 PASS。桥接以锁步方式转发（每周期一帧 IMU，seq 合成 1kHz 时间戳）。
 - `--gazebo` 正常 2000 帧：`result: PASS`，`imu_rx=2000 motor_tx=2000 imu_drop=0 motor_drop=0`；最终 roll `-0.0047` / pitch `0.0029` rad，与内置 SimPlant 场景一致。
 - `--gazebo --failsafe` 1000 帧：`Failsafe` + `ImuReadFault` + 电机归零，`result: PASS`，桥接同样锁步跑满 1000 帧。
 - SITL 生成的 `.hfl` 经 `hfl_dump.py --strict` 校验 `PASS`，可导出 CSV。
@@ -170,7 +171,7 @@ python tools/gazebo_bridge.py --backend gz \
 
 **尚未验证 / 预留**：
 
-- `gz` / `classic` 后端依赖真实 Gazebo 及其版本化 Python 绑定，本机未安装，**需在 Linux + Gazebo 环境实测**；话题名、消息字段、`Actuators.velocity` 单位要按实际 SDF 插件调整。
+- `classic` 后端依赖真实 Gazebo Classic 及其 Python 绑定，本机未安装，需实测接线与消息字段。
 - 当前是单机 UDP（`127.0.0.1`）；跨机部署需要处理丢包、乱序与重传，协议已带 `seq` 与校验和，但传输层尚未做可靠性保证。
 - 当前模型只有姿态、无高度 / 位置 / 气动 / 传感器噪声与延迟；`docs/realtime_contract.md` 中列出的 WCET、SD 卡掉电完整性等真机指标仍需实测。
 
