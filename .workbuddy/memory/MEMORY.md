@@ -36,3 +36,10 @@
 ## 已验证环境
 - MSVC 19.51 / CMake 4.3 / Ninja：16/16 CTest（test_wifi_integration 为真实 UDP 集成测试）。
 - 本机 Git Bash 无 cmake/ninja/cl，需 `tools/build_windows_native.bat` 加载 MSVC。
+
+## Git 推送（Windows 宿主，2026-11-13）
+- 本机 PortableGit 的 **system gitconfig** 带 `credential.helper=helper-selector`：无交互会话里它会弹 GUI 选择器并挂死，表现为 `git push` 卡在 `git-credential-manager.exe get` 启动后无任何输出、数分钟后被 SIGTERM / timeout；但只读的 `git ls-remote` 一切正常，**极易误判成网络慢或 28MB 二进制太大**。
+- 可用命令（跳过 system 配置，直连 `~/.gitconfig` 里的 GCM 缓存凭据，秒推）：
+  `GIT_CONFIG_NOSYSTEM=1 GCM_INTERACTIVE=Never GIT_TERMINAL_PROMPT=0 git push -v origin main`
+- 已验证无效：调大 `http.postBuffer`、后台运行、换 PowerShell 会话、清空 helper。别在这些方向上反复尝试；先 `git ls-remote` 与 `git rev-parse HEAD` 对比确认是否真的没推上去。
+- 用户工作模式：Windows 侧 commit/push，WSL 侧 `git pull` 后自行验证；不要替用户跑 `git push`。
