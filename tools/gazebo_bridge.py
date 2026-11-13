@@ -335,6 +335,15 @@ def run_gz(args: argparse.Namespace, flavor: str) -> int:
         node = None  # pygazebo uses a Manager, wired below
 
     state = {"seq": 0, "frames": 0, "motors": 0}
+    # Gazebo publishes IMU at its own sim rate (often far above the 1 kHz
+    # control period). Forwarding every callback floods the UDP socket and
+    # HomeFly's SPSC ring (imu_drop), and the sparse frames that do arrive
+    # carry non-uniform sim timestamps -> ControlOverrun / sticky Failsafe.
+    # Keep only the LATEST sample; the loop below emits exactly one IMU per
+    # control cycle with a synthetic 1 kHz timestamp derived from seq.
+    latest = {"valid": False,
+              "gyro": (0.0, 0.0, 0.0),
+              "accel": (0.0, 0.0, 0.0)}
 
     # gz-transport Python (gz.transport13 etc.) has NO Node.publish(): a
     # Publisher must be advertised first, then Publisher.publish(msg) is used.
@@ -363,29 +372,23 @@ def run_gz(args: argparse.Namespace, flavor: str) -> int:
             print("[classic] actuator publisher not wired: override "
                   "publish_actuators() for your Gazebo transport", file=sys.stderr)
 
+    def send_imu(seq: int) -> None:
+        # Synthetic 1 kHz timestamps keep check_timing() happy even when
+        # Gazebo's physics runs faster/slower than real time.
+        frame = make_imu(seq, seq * args.period_us,
+                         latest["gyro"], latest["accel"])
+        sock.sendto(frame, target)
+        state["frames"] += 1
+
     def on_imu(msg) -> None:
         angular = getattr(msg, "angular_velocity", None)
         linear = getattr(msg, "linear_acceleration", None)
         if angular is None or linear is None:
             return
-        gyro = axis_remap((angular.x, angular.y, angular.z), order, signs)
-        accel = axis_remap((linear.x, linear.y, linear.z), order, signs)
-
-        # seq MUST advance on every frame. HomeFly drops seq <= last_seq, so a
-        # constant seq would discard every IMU frame after the first. This used
-        # to stay at 1 whenever Gazebo supplied header.stamp (i.e. always in a
-        # real Gazebo run), silently breaking the whole SITL lockstep.
-        state["seq"] += 1
-        header = getattr(msg, "header", None)
-        stamp = getattr(header, "stamp", None) if header is not None else None
-        if stamp is not None and (getattr(stamp, "sec", 0) or getattr(stamp, "nsec", 0)):
-            timestamp_us = int(stamp.sec) * 1_000_000 + int(stamp.nsec) // 1000
-        else:
-            timestamp_us = state["seq"] * args.period_us
-
-        frame = make_imu(state["seq"], timestamp_us, gyro, accel)
-        sock.sendto(frame, target)
-        state["frames"] += 1
+        # Buffer only: actual wire emission is driven by the control loop.
+        latest["gyro"] = axis_remap((angular.x, angular.y, angular.z), order, signs)
+        latest["accel"] = axis_remap((linear.x, linear.y, linear.z), order, signs)
+        latest["valid"] = True
 
     if node is not None:
         ok = node.subscribe(imu_msg, args.imu_topic, on_imu)
@@ -401,16 +404,37 @@ def run_gz(args: argparse.Namespace, flavor: str) -> int:
     # a long lockstep run can legitimately take longer than the default 5 s.
     last_progress = time.monotonic()
 
+    # HomeFly blocks until it gets one IMU frame before emitting the first
+    # motor frame. Wait for the first Gazebo sample, then drive the wire in
+    # lockstep: exactly one IMU per loop iteration (and therefore per motor
+    # frame once the controller is running). Duplicate/lost startup frames
+    # are harmless because seq keeps advancing and FC rejects stale seqs.
+    startup_deadline = time.monotonic() + args.timeout
+    while not latest["valid"] and time.monotonic() < startup_deadline:
+        time.sleep(0.001)
+
+    if not latest["valid"]:
+        print(f"[{flavor}] no IMU sample from Gazebo on {args.imu_topic}",
+              file=sys.stderr)
+        sock.close()
+        return 1
+
     while args.steps == 0 or state["motors"] < args.steps:
         if args.timeout and time.monotonic() - last_progress > args.timeout:
             print(f"[{flavor}] no motor frame for {args.timeout}s", file=sys.stderr)
             break
+
         motors = wait_motor(sock, 0.02)
         if motors is not None:
             drain_rx(sock)
             publish_actuators(motors)
             state["motors"] += 1
-            last_progress = time.monotonic()
+
+        # One IMU per cycle: this is what keeps the FC's clock at a strict
+        # 1 kHz step regardless of Gazebo's own publishing rate.
+        state["seq"] += 1
+        send_imu(state["seq"])
+        last_progress = time.monotonic()
 
     sock.close()
     print(f"[{flavor}] done: imu_frames={state['frames']} "
