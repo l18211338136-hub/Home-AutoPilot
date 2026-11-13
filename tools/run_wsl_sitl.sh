@@ -16,6 +16,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+# homefly_airport.world includes the verbatim ArduPilot runway as
+# model://runway. gz sim resolves model:// URIs through this variable, so
+# expose the bundled model directory to every child process (Gazebo server,
+# GUI and bridge). Harmless for the default zero-dependency worlds.
+export GZ_SIM_RESOURCE_PATH="$ROOT/tools/gazebo/models${GZ_SIM_RESOURCE_PATH:+:$GZ_SIM_RESOURCE_PATH}"
 # Keep every path RELATIVE. Native Windows binaries invoked from Git Bash
 # mangle POSIX absolute paths (/d/... becomes D:\d\...); relative paths work
 # on both WSL/Linux and Git Bash.

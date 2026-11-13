@@ -6,9 +6,13 @@
   it includes the world systems, a 1 ms / 1 kHz physics step, ground plane and
   four rotor links + revolute joints required by MulticopterMotorModel.
 
-  Start headless with:
-      gz sim -s -v4 tools/gazebo/homefly_quad.world
+  Start headless with -r (running, not paused):
+      gz sim -s -r -v4 tools/gazebo/homefly_quad.world
   or let tools/run_wsl_sitl.sh (backend gz) start it for you.
+
+  The vehicle keeps the stock HomeFly link, sensor and plugin contract
+  (physics unchanged); only the visuals are Iris styled, so the bridge and
+  the WiFi GCS four terminal setup need no changes.
 
   NOTES (verified against Gazebo Sim 8 / Harmonic 8.15.0 on WSL2):
     * plugin filenames for your Gazebo release (gz-sim-*-system names vary).
@@ -88,8 +92,88 @@
             <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
           </inertia>
         </inertial>
-        <visual name="body_visual">
-          <geometry><box><size>0.20 0.20 0.05</size></box></geometry>
+        <!-- 3DR Iris style airframe, visual geometry only. The collision
+             box, inertial values, joints, IMU sensor and the four
+             motor plugins below are unchanged, so the verified control
+             loop behaviour carries over. -->
+        <visual name="iris_pod">
+          <geometry><box><size>0.16 0.12 0.045</size></box></geometry>
+          <material><diffuse>0.11 0.12 0.14 1</diffuse></material>
+        </visual>
+        <visual name="iris_canopy">
+          <pose>0 0 0.028 0 0 0</pose>
+          <geometry><box><size>0.10 0.09 0.012</size></box></geometry>
+          <material><diffuse>0.82 0.16 0.12 1</diffuse></material>
+        </visual>
+        <visual name="iris_arm_0">
+          <pose degrees="true">0.085 0.085 0 0 0 45</pose>
+          <geometry><box><size>0.24 0.018 0.012</size></box></geometry>
+          <material><diffuse>0.16 0.17 0.19 1</diffuse></material>
+        </visual>
+        <visual name="iris_arm_1">
+          <pose degrees="true">0.085 -0.085 0 0 0 -45</pose>
+          <geometry><box><size>0.24 0.018 0.012</size></box></geometry>
+          <material><diffuse>0.16 0.17 0.19 1</diffuse></material>
+        </visual>
+        <visual name="iris_arm_2">
+          <pose degrees="true">-0.085 -0.085 0 0 0 45</pose>
+          <geometry><box><size>0.24 0.018 0.012</size></box></geometry>
+          <material><diffuse>0.16 0.17 0.19 1</diffuse></material>
+        </visual>
+        <visual name="iris_arm_3">
+          <pose degrees="true">-0.085 0.085 0 0 0 -45</pose>
+          <geometry><box><size>0.24 0.018 0.012</size></box></geometry>
+          <material><diffuse>0.16 0.17 0.19 1</diffuse></material>
+        </visual>
+        <visual name="iris_motor_0">
+          <pose>0.17 0.17 0.012 0 0 0</pose>
+          <geometry><cylinder><radius>0.022</radius><length>0.028</length></cylinder></geometry>
+          <material><diffuse>0.30 0.31 0.33 1</diffuse></material>
+        </visual>
+        <visual name="iris_motor_1">
+          <pose>0.17 -0.17 0.012 0 0 0</pose>
+          <geometry><cylinder><radius>0.022</radius><length>0.028</length></cylinder></geometry>
+          <material><diffuse>0.30 0.31 0.33 1</diffuse></material>
+        </visual>
+        <visual name="iris_motor_2">
+          <pose>-0.17 -0.17 0.012 0 0 0</pose>
+          <geometry><cylinder><radius>0.022</radius><length>0.028</length></cylinder></geometry>
+          <material><diffuse>0.30 0.31 0.33 1</diffuse></material>
+        </visual>
+        <visual name="iris_motor_3">
+          <pose>-0.17 0.17 0.012 0 0 0</pose>
+          <geometry><cylinder><radius>0.022</radius><length>0.028</length></cylinder></geometry>
+          <material><diffuse>0.30 0.31 0.33 1</diffuse></material>
+        </visual>
+        <visual name="iris_skid_l">
+          <pose>0 0.13 -0.13 0 0 0</pose>
+          <geometry><box><size>0.30 0.014 0.014</size></box></geometry>
+          <material><diffuse>0.20 0.21 0.23 1</diffuse></material>
+        </visual>
+        <visual name="iris_skid_r">
+          <pose>0 -0.13 -0.13 0 0 0</pose>
+          <geometry><box><size>0.30 0.014 0.014</size></box></geometry>
+          <material><diffuse>0.20 0.21 0.23 1</diffuse></material>
+        </visual>
+        <visual name="iris_strut_0">
+          <pose>0.1 0.13 -0.07 0 0 0</pose>
+          <geometry><cylinder><radius>0.006</radius><length>0.12</length></cylinder></geometry>
+          <material><diffuse>0.20 0.21 0.23 1</diffuse></material>
+        </visual>
+        <visual name="iris_strut_1">
+          <pose>0.1 -0.13 -0.07 0 0 0</pose>
+          <geometry><cylinder><radius>0.006</radius><length>0.12</length></cylinder></geometry>
+          <material><diffuse>0.20 0.21 0.23 1</diffuse></material>
+        </visual>
+        <visual name="iris_strut_2">
+          <pose>-0.1 0.13 -0.07 0 0 0</pose>
+          <geometry><cylinder><radius>0.006</radius><length>0.12</length></cylinder></geometry>
+          <material><diffuse>0.20 0.21 0.23 1</diffuse></material>
+        </visual>
+        <visual name="iris_strut_3">
+          <pose>-0.1 -0.13 -0.07 0 0 0</pose>
+          <geometry><cylinder><radius>0.006</radius><length>0.12</length></cylinder></geometry>
+          <material><diffuse>0.20 0.21 0.23 1</diffuse></material>
         </visual>
         <collision name="body_collision">
           <geometry><box><size>0.20 0.20 0.05</size></box></geometry>
@@ -121,7 +205,24 @@
       <link name="rotor_0">
         <pose>0.17 0.17 0.02 0 0 0</pose>
         <inertial><mass>0.005</mass><inertia><ixx>1e-6</ixx><iyy>1e-6</iyy><izz>2e-6</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
-        <visual name="visual"><geometry><cylinder><radius>0.10</radius><length>0.005</length></cylinder></geometry></visual>
+        <visual name="visual">
+          <geometry><cylinder><radius>0.012</radius><length>0.008</length></cylinder></geometry>
+          <material><diffuse>0.30 0.31 0.33 1</diffuse></material>
+        </visual>
+        <visual name="prop_blade_a">
+          <geometry><box><size>0.20 0.024 0.003</size></box></geometry>
+          <material><diffuse>0.17 0.18 0.20 1</diffuse></material>
+        </visual>
+        <visual name="prop_blade_b">
+          <pose degrees="true">0 0 0 0 0 90</pose>
+          <geometry><box><size>0.20 0.024 0.003</size></box></geometry>
+          <material><diffuse>0.17 0.18 0.20 1</diffuse></material>
+        </visual>
+        <visual name="prop_mark">
+          <pose>0.075 0 0.003 0 0 0</pose>
+          <geometry><box><size>0.04 0.024 0.002</size></box></geometry>
+          <material><diffuse>0.82 0.16 0.12 1</diffuse></material>
+        </visual>
       </link>
       <joint name="rotor_0_joint" type="revolute">
         <parent>body</parent><child>rotor_0</child>
@@ -131,7 +232,24 @@
       <link name="rotor_1">
         <pose>0.17 -0.17 0.02 0 0 0</pose>
         <inertial><mass>0.005</mass><inertia><ixx>1e-6</ixx><iyy>1e-6</iyy><izz>2e-6</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
-        <visual name="visual"><geometry><cylinder><radius>0.10</radius><length>0.005</length></cylinder></geometry></visual>
+        <visual name="visual">
+          <geometry><cylinder><radius>0.012</radius><length>0.008</length></cylinder></geometry>
+          <material><diffuse>0.30 0.31 0.33 1</diffuse></material>
+        </visual>
+        <visual name="prop_blade_a">
+          <geometry><box><size>0.20 0.024 0.003</size></box></geometry>
+          <material><diffuse>0.17 0.18 0.20 1</diffuse></material>
+        </visual>
+        <visual name="prop_blade_b">
+          <pose degrees="true">0 0 0 0 0 90</pose>
+          <geometry><box><size>0.20 0.024 0.003</size></box></geometry>
+          <material><diffuse>0.17 0.18 0.20 1</diffuse></material>
+        </visual>
+        <visual name="prop_mark">
+          <pose>0.075 0 0.003 0 0 0</pose>
+          <geometry><box><size>0.04 0.024 0.002</size></box></geometry>
+          <material><diffuse>0.90 0.90 0.92 1</diffuse></material>
+        </visual>
       </link>
       <joint name="rotor_1_joint" type="revolute">
         <parent>body</parent><child>rotor_1</child>
@@ -141,7 +259,24 @@
       <link name="rotor_2">
         <pose>-0.17 -0.17 0.02 0 0 0</pose>
         <inertial><mass>0.005</mass><inertia><ixx>1e-6</ixx><iyy>1e-6</iyy><izz>2e-6</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
-        <visual name="visual"><geometry><cylinder><radius>0.10</radius><length>0.005</length></cylinder></geometry></visual>
+        <visual name="visual">
+          <geometry><cylinder><radius>0.012</radius><length>0.008</length></cylinder></geometry>
+          <material><diffuse>0.30 0.31 0.33 1</diffuse></material>
+        </visual>
+        <visual name="prop_blade_a">
+          <geometry><box><size>0.20 0.024 0.003</size></box></geometry>
+          <material><diffuse>0.17 0.18 0.20 1</diffuse></material>
+        </visual>
+        <visual name="prop_blade_b">
+          <pose degrees="true">0 0 0 0 0 90</pose>
+          <geometry><box><size>0.20 0.024 0.003</size></box></geometry>
+          <material><diffuse>0.17 0.18 0.20 1</diffuse></material>
+        </visual>
+        <visual name="prop_mark">
+          <pose>0.075 0 0.003 0 0 0</pose>
+          <geometry><box><size>0.04 0.024 0.002</size></box></geometry>
+          <material><diffuse>0.90 0.90 0.92 1</diffuse></material>
+        </visual>
       </link>
       <joint name="rotor_2_joint" type="revolute">
         <parent>body</parent><child>rotor_2</child>
@@ -151,7 +286,24 @@
       <link name="rotor_3">
         <pose>-0.17 0.17 0.02 0 0 0</pose>
         <inertial><mass>0.005</mass><inertia><ixx>1e-6</ixx><iyy>1e-6</iyy><izz>2e-6</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
-        <visual name="visual"><geometry><cylinder><radius>0.10</radius><length>0.005</length></cylinder></geometry></visual>
+        <visual name="visual">
+          <geometry><cylinder><radius>0.012</radius><length>0.008</length></cylinder></geometry>
+          <material><diffuse>0.30 0.31 0.33 1</diffuse></material>
+        </visual>
+        <visual name="prop_blade_a">
+          <geometry><box><size>0.20 0.024 0.003</size></box></geometry>
+          <material><diffuse>0.17 0.18 0.20 1</diffuse></material>
+        </visual>
+        <visual name="prop_blade_b">
+          <pose degrees="true">0 0 0 0 0 90</pose>
+          <geometry><box><size>0.20 0.024 0.003</size></box></geometry>
+          <material><diffuse>0.17 0.18 0.20 1</diffuse></material>
+        </visual>
+        <visual name="prop_mark">
+          <pose>0.075 0 0.003 0 0 0</pose>
+          <geometry><box><size>0.04 0.024 0.002</size></box></geometry>
+          <material><diffuse>0.82 0.16 0.12 1</diffuse></material>
+        </visual>
       </link>
       <joint name="rotor_3_joint" type="revolute">
         <parent>body</parent><child>rotor_3</child>

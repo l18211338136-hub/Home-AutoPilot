@@ -367,43 +367,71 @@ q                # 退出（自动发 DISARM）
 FC 日志 `frames_received` 持续增长、`link_lost=no`、`mode=stabilize`；
 `gz topic -e -t /homefly/actuators -n 3` 的 velocity 随油门变化。
 
-### 8.9 切换 ArduPilot 机场 / 迷宫场景
+### 8.9 切换 ArduPilot 机场 / 迷宫场景与 Iris 风格外观
 
-`tools/gazebo/` 下有三个可直接替换的 world，**桥接、飞控、GCS 命令一行都不用改**：
+`tools/gazebo/` 下有四个可直接替换的 world，**桥接、飞控、GCS 命令一行都不用改**：
 
 | world 文件 | 场景 | 来源 | 外部资源 |
 | --- | --- | --- | --- |
 | `homefly_quad.world` | 灰色空场（默认，已验证 PASS） | 本项目 | 无 |
 | `homefly_maze.world` | 迷宫（14 面墙 + 深色地面） | `ArduPilot/ardupilot_gz` → `ardupilot_gz_gazebo/worlds/maze.sdf`，几何逐字复制 | 无 |
-| `homefly_airport.world` | 机场（跑道 / 中心线 / 阈值条 / 停机坪 / 机库 / 塔台 / 风向袋 / 油罐） | 布局参考 `ArduPilot/ardupilot_gazebo` → `models/runway` + `runway.sdf` | 无 |
+| `homefly_airport.world` | **逐字节原版** ArduPilot 机场（跑道 + `airfield.dae` 网格 + PBR 贴图） | `ArduPilot/ardupilot_gazebo` → `models/runway`，用 `<include><uri>model://runway</uri></include>` 加载 | `tools/gazebo/models/runway/`（上游完整目录，28 MB） |
+| `homefly_airport_lite.world` | 同布局的轻量机场（跑道 / 中心线 / 阈值条 / 停机坪 / 机库 / 塔台 / 风向袋 / 油罐） | 按上游 `runway.sdf` 布局用内联 `<box>` 几何重建 | 无 |
 
-三个文件都刻意保持 `world name="quad"`、`model name="homefly"`：桥接订阅
+**飞机外观统一是 3DR Iris 风格**：中心舱、红色顶盖、X 型四机臂、四个电机、
+滑橇起落架与双叶桨标记，全部用内联几何拼出，不引用任何 mesh，因此不额外增加
+资源路径依赖。改动只发生在 `<visual>` 元素 —— `inertial`、`collision`、
+`link` / `joint` 名字、`sensor name="imu"` 及其话题、四个
+`MulticopterMotorModel` 插件（`commandSubTopic=actuators`、无 `robotNamespace`）
+**一个字都没动**，所以 8.7 / 8.8 的验证结论可直接迁移。若之后想换成原版
+`iris.dae` 网格，只需替换这些 `<visual>`，物理与桥接仍不用碰。
+
+四个文件都刻意保持 `world name="quad"`、`model name="homefly"`：桥接订阅
 `/world/quad/model/homefly/link/body/sensor/imu/imu`，四个电机插件靠模型名兜底
 订阅 `homefly/actuators`（规范化为 `/homefly/actuators`）。**改这两个名字就会断链**。
-`homefly` 模型是从 `homefly_quad.world` 逐字复制的 —— physics（1 ms / 1 kHz）、
-IMU 传感器、四个 `MulticopterMotorModel` 插件、link 集合全部一致，所以 8.7 / 8.8
-的验证结论可直接迁移；唯一区别是 `homefly_maze.world` 把停机点从原点移到较开阔
-的 `(2, 2)`，避免贴着两面墙。维护提示：三个文件里的 `homefly` 模型是同一份拷贝，
-调整质量 / 惯量 / 电机常数时需要同步改三处；切换场景只需换 world 路径。
+四个 `homefly` 模型是同一份拷贝（physics 1 ms / 1 kHz、IMU、四个电机插件、link
+集合一致），唯一区别是 `homefly_maze.world` 把停机点移到较开阔的 `(2, 2)`。
+原版机场 world 里没有独立的 `ground_plane` 模型：地面由 `model://runway` 自带的
+无限 `<collision><plane>` 提供；lite 版则由 `grass` 模型提供。
+
+**`GZ_SIM_RESOURCE_PATH`（只在用原版机场时需要）**：`model://runway` 由 gz 通过
+该环境变量解析。`tools/run_wsl_sitl.sh` 已在脚本开头自动导出：
+
+```bash
+export GZ_SIM_RESOURCE_PATH="$ROOT/tools/gazebo/models${GZ_SIM_RESOURCE_PATH:+:$GZ_SIM_RESOURCE_PATH}"
+```
+
+手工起 GUI（8.7 / 8.8 的终端 1）时须自己在同一个终端先导出，否则 gz 报
+`Unable to find uri[model://runway]` 并把机场模型丢掉：
+
+```bash
+export GZ_SIM_RESOURCE_PATH="$PWD/tools/gazebo/models${GZ_SIM_RESOURCE_PATH:+:$GZ_SIM_RESOURCE_PATH}"
+gz sim -r -v4 tools/gazebo/homefly_airport.world
+```
 
 **切换方式**：把 8.7 / 8.8 里终端 1 的 world 路径换掉，其余三个终端不变：
 
 ```bash
-# GUI 迷宫 / 机场
+# GUI 迷宫 / 原版机场 / 轻量机场
 gz sim -r -v4 tools/gazebo/homefly_maze.world
 gz sim -r -v4 tools/gazebo/homefly_airport.world
+gz sim -r -v4 tools/gazebo/homefly_airport_lite.world
 
-# headless 回归（脚本已有 --world 参数）
+# headless 回归（脚本已有 --world 参数，资源路径自动导出）
 bash tools/run_wsl_sitl.sh --backend gz --world tools/gazebo/homefly_maze.world
 bash tools/run_wsl_sitl.sh --backend gz --world tools/gazebo/homefly_airport.world
 ```
 
-**为什么机场不是逐字节的上游模型**：上游 `model://runway` 依赖一个 `airfield.dae`
-网格和 5 张 PBR 贴图，合计约 18 MB（其中 `Grass004_2K_NormalGL.jpg` 单张 10 MB），
-还要额外设置 `GZ_SIM_RESOURCE_PATH`。为了不让飞控仓库背上二进制资源、也不给 WSL
-启动增加配置步骤，机场按上游的跑道尺寸与布局用内联 `<box>` 几何 + 纯色材质重建；
-装饰模型只有 `<visual>`、没有 `<collision>`，不会干扰 IMU。迷宫本身零依赖，
-所以完全照搬。上游资源版权归 ArduPilot 项目，场景出处见各 world 文件头注释。
+**关于「逐字节」**：`tools/gazebo/models/runway/` 是从
+`ArduPilot/ardupilot_gazebo/models/runway` main 分支下载后未编辑的完整副本
+（`model.sdf`、`model.config`、`meshes/airfield.dae` 与 `materials/textures/` 下
+全部 7 张贴图），已逐个与上游 `raw.githubusercontent.com` 做 `cmp` 校验一致。
+其中 SDF / DAE 实际引用的 5 张约 18 MB；另外 2 张
+（`Grass004_2K_Color copy.jpg`、`Grass004_2K_Displacement.jpg`）上游存在但未被
+引用，为保持目录逐字节也一并保留，不参与渲染。上游 `runway.sdf` 把跑道放在
+`(-29, 545)` 供 GPS 导航用；这里 `<include>` 不带 `<pose>`，默认落在原点，
+让飞机和跑道同处 GUI 视口 —— **唯一差异是 include 的摆放位置，模型资源本身
+没有任何修改**。资源版权归 ArduPilot 项目。
 
 **能力边界（重要）**：ArduPilot 文档里的迷宫是给带 360° 2D 激光雷达的 Iris 做
 Cartographer SLAM / 自主导航用的；HomeFly 是**姿态自稳飞控**，只有
@@ -411,4 +439,5 @@ roll / pitch / yaw_rate / throttle，没有位置估计、避障或航点导航�
 复用，但飞机不会自己穿迷宫 —— 只能在场景里悬停 / 手动打杆。另外迷宫墙是
 **带碰撞体**的静态实体，打杆过猛撞墙会产生异常加速度并触发 `InvalidImuData`
 Failsafe（粘性，可在 GCS 输 `arm` 或 `disarm` 恢复）；做纯净的姿态回归请用
-默认的 `homefly_quad.world`。
+默认的 `homefly_quad.world`。维护提示：四个文件里的 `homefly` 模型是同一份拷贝，
+调整质量 / 惯量 / 电机常数时需要同步改四处；切换场景只需换 world 路径。
