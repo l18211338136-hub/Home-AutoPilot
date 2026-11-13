@@ -5,6 +5,7 @@
 #include "control/motor_mixer.hpp"
 #include "control/pid_controller.hpp"
 #include "flight_core/flight_state_machine.hpp"
+#include "flight_core/prearm_checker.hpp"
 #include "flight_core/safety_monitor.hpp"
 #include "flight_core/types.hpp"
 #include "hal/i_clock.hpp"
@@ -42,6 +43,8 @@ public:
 
 	FailsafeReason failsafe_reason() const noexcept;
 
+	const PreArmReport& prearm_report() const noexcept;
+
 private:
 	void enter_failsafe(
 		FailsafeReason reason
@@ -63,9 +66,12 @@ private:
 	MotorMixer _mixer;
 	SafetyMonitor _safety;
 	FlightStateMachine _fsm;
+	PreArmChecker _prearm;
 
 	VehicleState _state{};
 	ControlOutput _output{};
+	PreArmReport _prearm_report{};
+	bool _hardware_ready{false};
 	uint64_t _last_step_us{0};
 };
 

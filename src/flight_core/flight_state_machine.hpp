@@ -23,6 +23,7 @@ public:
 	FlightMode update(
 		StateEvent event,
 		bool sensors_valid,
+		bool prearm_ok = true,
 		FailsafeReason fault_reason = FailsafeReason::None
 	) noexcept;
 

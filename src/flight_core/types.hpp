@@ -23,7 +23,8 @@ enum class FailsafeReason : uint8_t
 	ImuTimeout,
 	InvalidImuData,
 	ControlOverrun,
-	MotorFault
+	MotorFault,
+	PreArmFailed
 };
 
 struct VehicleState

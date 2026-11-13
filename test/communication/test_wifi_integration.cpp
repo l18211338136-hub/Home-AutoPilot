@@ -130,7 +130,10 @@ TEST(WifiIntegration, ArmsAndStabilizesOverUdp)
 		}
 		if (i % 25u == 0u)
 		{
-			pack_setpoint_payload(0.5f, 0.0f, 0.0f, 0.0f, sp);
+			// First setpoint must be at minimum throttle so PreArm allows arming;
+			// once armed, raise throttle to actually fly.
+			const float thr = (i == 0u) ? 0.0f : 0.5f;
+			pack_setpoint_payload(thr, 0.0f, 0.0f, 0.0f, sp);
 			send_frame(gcs_link, ControlFrameType::Setpoint, sp, kControlPayloadSize);
 		}
 
@@ -178,7 +181,10 @@ TEST(WifiIntegration, LinkLossDisarmsOverUdp)
 		}
 		if (i % 25u == 0u)
 		{
-			pack_setpoint_payload(0.5f, 0.0f, 0.0f, 0.0f, sp);
+			// First setpoint must be at minimum throttle so PreArm allows arming;
+			// once armed, raise throttle to actually fly.
+			const float thr = (i == 0u) ? 0.0f : 0.5f;
+			pack_setpoint_payload(thr, 0.0f, 0.0f, 0.0f, sp);
 			send_frame(gcs_link, ControlFrameType::Setpoint, sp, kControlPayloadSize);
 		}
 		receiver.poll();

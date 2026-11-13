@@ -6,6 +6,7 @@ namespace homefly
 FlightMode FlightStateMachine::update(
 	StateEvent event,
 	bool sensors_valid,
+	bool prearm_ok,
 	FailsafeReason fault_reason
 ) noexcept
 {
@@ -29,7 +30,7 @@ FlightMode FlightStateMachine::update(
 	case StateEvent::ArmRequest:
 		if (_mode == FlightMode::Disarmed)
 		{
-			if (sensors_valid)
+			if (sensors_valid && prearm_ok)
 			{
 				_mode = FlightMode::Stabilize;
 				_reason = FailsafeReason::None;
@@ -37,7 +38,9 @@ FlightMode FlightStateMachine::update(
 			else
 			{
 				_mode = FlightMode::Failsafe;
-				_reason = FailsafeReason::ImuTimeout;
+				// Sensor faults take precedence over PreArm in the failure
+				// attribution so the root cause is reported correctly.
+				_reason = sensors_valid ? FailsafeReason::PreArmFailed : FailsafeReason::ImuTimeout;
 			}
 		}
 		break;

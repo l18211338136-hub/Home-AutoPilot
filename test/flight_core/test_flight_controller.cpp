@@ -147,10 +147,16 @@ TEST(FlightController, DisarmedByDefault)
 TEST(FlightController, StabilizesInitialAttitude)
 {
 	Rig rig;
-	Setpoint setpoint{};
-	setpoint.throttle = 0.5f;
-	setpoint.arm_request = true;
-	run_cycles(rig, 2000, setpoint);
+	// Arm at zero throttle (PreArm requires throttle at minimum), then fly.
+	Setpoint arm{};
+	arm.arm_request = true;
+	run_cycles(rig, 50, arm);
+	EXPECT_TRUE(rig.controller.mode() == FlightMode::Stabilize);
+	EXPECT_TRUE(rig.motor.is_armed());
+
+	Setpoint fly{};
+	fly.throttle = 0.5f;
+	run_cycles(rig, 2000, fly);
 	EXPECT_TRUE(rig.controller.mode() == FlightMode::Stabilize);
 	EXPECT_TRUE(rig.motor.is_armed());
 	EXPECT_TRUE(std::fabs(rig.controller.state().attitude.roll) < 0.05f);
@@ -160,14 +166,18 @@ TEST(FlightController, StabilizesInitialAttitude)
 TEST(FlightController, ImuDropoutTriggersFailsafe)
 {
 	Rig rig;
-	Setpoint setpoint{};
-	setpoint.throttle = 0.5f;
-	setpoint.arm_request = true;
-	run_cycles(rig, 100, setpoint);
+	// Arm at zero throttle (PreArm requires throttle at minimum), then fly.
+	Setpoint arm{};
+	arm.arm_request = true;
+	run_cycles(rig, 100, arm);
+	EXPECT_TRUE(rig.controller.mode() == FlightMode::Stabilize);
+	EXPECT_TRUE(rig.motor.is_armed());
 
+	Setpoint fly{};
+	fly.throttle = 0.5f;
 	rig.imu.set_fault(true);
 	rig.clock.advance_us(rig.config.control_period_us);
-	EXPECT_FALSE(rig.controller.step(setpoint));
+	EXPECT_FALSE(rig.controller.step(fly));
 	EXPECT_TRUE(rig.controller.mode() == FlightMode::Failsafe);
 	EXPECT_TRUE(rig.controller.failsafe_reason() == FailsafeReason::ImuReadFault);
 	EXPECT_TRUE(motors_are_zero(rig.motor));
@@ -176,16 +186,20 @@ TEST(FlightController, ImuDropoutTriggersFailsafe)
 TEST(FlightController, FailsafeIsStickyAfterSensorRecovery)
 {
 	Rig rig;
-	Setpoint setpoint{};
-	setpoint.throttle = 0.5f;
-	setpoint.arm_request = true;
-	run_cycles(rig, 100, setpoint);
+	// Arm at zero throttle (PreArm requires throttle at minimum), then fly.
+	Setpoint arm{};
+	arm.arm_request = true;
+	run_cycles(rig, 100, arm);
+	EXPECT_TRUE(rig.controller.mode() == FlightMode::Stabilize);
+	EXPECT_TRUE(rig.motor.is_armed());
 
+	Setpoint fly{};
+	fly.throttle = 0.5f;
 	rig.imu.set_fault(true);
 	rig.clock.advance_us(rig.config.control_period_us);
-	rig.controller.step(setpoint);
+	rig.controller.step(fly);
 	rig.imu.set_fault(false);
-	run_cycles(rig, 10, setpoint);
+	run_cycles(rig, 10, fly);
 	EXPECT_TRUE(rig.controller.mode() == FlightMode::Failsafe);
 	EXPECT_TRUE(motors_are_zero(rig.motor));
 }
@@ -193,8 +207,8 @@ TEST(FlightController, FailsafeIsStickyAfterSensorRecovery)
 TEST(FlightController, ExplicitDisarmStopsMotors)
 {
 	Rig rig;
+	// Arm at zero throttle (PreArm requires throttle at minimum).
 	Setpoint armed{};
-	armed.throttle = 0.5f;
 	armed.arm_request = true;
 	run_cycles(rig, 100, armed);
 	EXPECT_TRUE(rig.motor.is_armed());
@@ -249,7 +263,6 @@ TEST(FlightController, ControlOverrunTriggersFailsafe)
 {
 	Rig rig;
 	Setpoint setpoint{};
-	setpoint.throttle = 0.5f;
 	setpoint.arm_request = true;
 	run_cycles(rig, 100, setpoint);
 

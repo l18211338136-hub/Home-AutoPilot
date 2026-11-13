@@ -40,7 +40,8 @@ bool FlightController::initialize() noexcept
 
 	_motor.disarm();
 
-	return _imu.initialize() && _motor.initialize();
+	_hardware_ready = _imu.initialize() && _motor.initialize();
+	return _hardware_ready;
 }
 
 bool FlightController::step(
@@ -111,7 +112,22 @@ bool FlightController::step(
 		event = StateEvent::DisarmRequest;
 	}
 
-	const FlightMode mode = _fsm.update(event, _state.valid);
+	// PreArm gate (SKILL.md 3.4): every unlock must clear all pre-arm checks.
+	// Throttle-at-min only matters at the arm transition; once Stabilize the FSM
+	// ignores prearm_ok (it is only consulted on ArmRequest from Disarmed).
+	_prearm_report = _prearm.check(PreArmInputs{
+		.imu_initialized = _hardware_ready,
+		.imu_data_valid = _state.valid,
+		.throttle = setpoint.throttle,
+		.config = &_config,
+		.calibration_required = false, // TODO(HF-004): no calibration subsystem yet
+		.calibration_ok = true,
+		.has_battery = false,
+		.has_severe_fault = (_fsm.mode() == FlightMode::Failsafe)
+	});
+	const bool prearm_ok = _prearm_report.all_passed();
+
+	const FlightMode mode = _fsm.update(event, _state.valid, prearm_ok);
 
 	if (mode != FlightMode::Stabilize)
 	{
@@ -163,7 +179,7 @@ void FlightController::enter_failsafe(
 		event = StateEvent::ControlFault;
 	}
 
-	_fsm.update(event, false, reason);
+	_fsm.update(event, false, true, reason);
 	_state.valid = false;
 	output_safe_state();
 }
@@ -198,6 +214,11 @@ FlightMode FlightController::mode() const noexcept
 FailsafeReason FlightController::failsafe_reason() const noexcept
 {
 	return _fsm.failsafe_reason();
+}
+
+const PreArmReport& FlightController::prearm_report() const noexcept
+{
+	return _prearm_report;
 }
 
 } // namespace homefly
