@@ -336,6 +336,20 @@ def run_gz(args: argparse.Namespace, flavor: str) -> int:
 
     state = {"seq": 0, "frames": 0, "motors": 0}
 
+    # gz-transport Python (gz.transport13 etc.) has NO Node.publish(): a
+    # Publisher must be advertised first, then Publisher.publish(msg) is used.
+    # Advertise once up front - doing it per motor frame would leak publishers.
+    actuator_pub = None
+    if node is not None:
+        try:
+            actuator_pub = node.advertise(args.motor_topic, actuator_msg)
+        except TypeError:
+            # Older bindings take the protobuf type name instead of the class.
+            actuator_pub = node.advertise(
+                args.motor_topic, actuator_msg.DESCRIPTOR.full_name)
+        if actuator_pub is None:
+            raise RuntimeError(f"cannot advertise {args.motor_topic}")
+
     def publish_actuators(values: Sequence[float]) -> None:
         msg = actuator_msg()
         # gz-sim-multicopter-motor-model-system reads Actuators.velocity
@@ -343,8 +357,8 @@ def run_gz(args: argparse.Namespace, flavor: str) -> int:
         # your SDF plugin.
         for value in values[:MOTOR_COUNT]:
             msg.velocity.append(max(0.0, float(value)) * args.max_rot_velocity)
-        if node is not None:
-            node.publish(args.motor_topic, msg)
+        if actuator_pub is not None:
+            actuator_pub.publish(msg)
         else:
             print("[classic] actuator publisher not wired: override "
                   "publish_actuators() for your Gazebo transport", file=sys.stderr)
