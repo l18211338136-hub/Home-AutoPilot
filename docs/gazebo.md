@@ -366,3 +366,49 @@ q                # 退出（自动发 DISARM）
 **验收看这些，不要只看 `result`**：GUI 视口里飞机随打杆实时倾斜/加减速；
 FC 日志 `frames_received` 持续增长、`link_lost=no`、`mode=stabilize`；
 `gz topic -e -t /homefly/actuators -n 3` 的 velocity 随油门变化。
+
+### 8.9 切换 ArduPilot 机场 / 迷宫场景
+
+`tools/gazebo/` 下有三个可直接替换的 world，**桥接、飞控、GCS 命令一行都不用改**：
+
+| world 文件 | 场景 | 来源 | 外部资源 |
+| --- | --- | --- | --- |
+| `homefly_quad.world` | 灰色空场（默认，已验证 PASS） | 本项目 | 无 |
+| `homefly_maze.world` | 迷宫（14 面墙 + 深色地面） | `ArduPilot/ardupilot_gz` → `ardupilot_gz_gazebo/worlds/maze.sdf`，几何逐字复制 | 无 |
+| `homefly_airport.world` | 机场（跑道 / 中心线 / 阈值条 / 停机坪 / 机库 / 塔台 / 风向袋 / 油罐） | 布局参考 `ArduPilot/ardupilot_gazebo` → `models/runway` + `runway.sdf` | 无 |
+
+三个文件都刻意保持 `world name="quad"`、`model name="homefly"`：桥接订阅
+`/world/quad/model/homefly/link/body/sensor/imu/imu`，四个电机插件靠模型名兜底
+订阅 `homefly/actuators`（规范化为 `/homefly/actuators`）。**改这两个名字就会断链**。
+`homefly` 模型是从 `homefly_quad.world` 逐字复制的 —— physics（1 ms / 1 kHz）、
+IMU 传感器、四个 `MulticopterMotorModel` 插件、link 集合全部一致，所以 8.7 / 8.8
+的验证结论可直接迁移；唯一区别是 `homefly_maze.world` 把停机点从原点移到较开阔
+的 `(2, 2)`，避免贴着两面墙。维护提示：三个文件里的 `homefly` 模型是同一份拷贝，
+调整质量 / 惯量 / 电机常数时需要同步改三处；切换场景只需换 world 路径。
+
+**切换方式**：把 8.7 / 8.8 里终端 1 的 world 路径换掉，其余三个终端不变：
+
+```bash
+# GUI 迷宫 / 机场
+gz sim -r -v4 tools/gazebo/homefly_maze.world
+gz sim -r -v4 tools/gazebo/homefly_airport.world
+
+# headless 回归（脚本已有 --world 参数）
+bash tools/run_wsl_sitl.sh --backend gz --world tools/gazebo/homefly_maze.world
+bash tools/run_wsl_sitl.sh --backend gz --world tools/gazebo/homefly_airport.world
+```
+
+**为什么机场不是逐字节的上游模型**：上游 `model://runway` 依赖一个 `airfield.dae`
+网格和 5 张 PBR 贴图，合计约 18 MB（其中 `Grass004_2K_NormalGL.jpg` 单张 10 MB），
+还要额外设置 `GZ_SIM_RESOURCE_PATH`。为了不让飞控仓库背上二进制资源、也不给 WSL
+启动增加配置步骤，机场按上游的跑道尺寸与布局用内联 `<box>` 几何 + 纯色材质重建；
+装饰模型只有 `<visual>`、没有 `<collision>`，不会干扰 IMU。迷宫本身零依赖，
+所以完全照搬。上游资源版权归 ArduPilot 项目，场景出处见各 world 文件头注释。
+
+**能力边界（重要）**：ArduPilot 文档里的迷宫是给带 360° 2D 激光雷达的 Iris 做
+Cartographer SLAM / 自主导航用的；HomeFly 是**姿态自稳飞控**，只有
+roll / pitch / yaw_rate / throttle，没有位置估计、避障或航点导航。场景能 100%
+复用，但飞机不会自己穿迷宫 —— 只能在场景里悬停 / 手动打杆。另外迷宫墙是
+**带碰撞体**的静态实体，打杆过猛撞墙会产生异常加速度并触发 `InvalidImuData`
+Failsafe（粘性，可在 GCS 输 `arm` 或 `disarm` 恢复）；做纯净的姿态回归请用
+默认的 `homefly_quad.world`。

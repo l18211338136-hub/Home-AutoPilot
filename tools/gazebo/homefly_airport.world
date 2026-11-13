@@ -1,0 +1,508 @@
+<?xml version="1.0" ?>
+<!--
+  HomeFly Quad-X SITL world using an ArduPilot style airfield scene.
+
+  Layout follows ArduPilot/ardupilot_gazebo (models/runway plus the
+  runway.sdf world): long asphalt strip, centreline, threshold bars, apron,
+  hangar, control tower, windsock and fuel tanks. The upstream model needs
+  roughly 18 MB of PBR grass textures and a COLLADA mesh plus a resource
+  path setup; this world rebuilds the same layout with inline geometry and
+  flat colours so it is fully self contained and loads with a plain
+  gz sim invocation.
+
+  The world name stays "quad" and the vehicle model stays "homefly"
+  deliberately: the SITL bridge subscribes to
+      /world/quad/model/homefly/link/body/sensor/imu/imu
+  and publishes Actuators on /homefly/actuators (model name fallback).
+  Renaming either breaks the bridge and the WiFi GCS four terminal setup.
+
+  The vehicle is the stock HomeFly model from homefly_quad.world, copied
+  verbatim so the verified control loop behaviour is unchanged. Decorative
+  models are visual only; the grass plane is the sole collision surface.
+
+  Run with:
+      gz sim -r -v4 tools/gazebo/homefly_airport.world
+  or select this file through the SITL script's world option.
+-->
+<sdf version="1.9">
+  <world name="quad">
+
+    <!-- 1 kHz control loop: HomeFly expects exactly one IMU frame per
+         control period (FlightConfig::control_period_us = 1000). -->
+    <physics name="homefly_1khz" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_update_rate>1000</real_time_update_rate>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <plugin filename="gz-sim-physics-system"
+            name="gz::sim::systems::Physics"/>
+    <!-- Harmonic 8 needs the dedicated Imu system; gz-sim-sensors-system
+         only handles rendering style sensors. -->
+    <plugin filename="gz-sim-imu-system"
+            name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-sensors-system"
+            name="gz::sim::systems::Sensors"/>
+    <plugin filename="gz-sim-user-commands-system"
+            name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system"
+            name="gz::sim::systems::SceneBroadcaster"/>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -1</direction>
+    </light>
+
+    <!-- Airfield. Layout and proportions follow the ArduPilot runway scene
+         (ardupilot_gazebo models/runway plus the runway.sdf world): a long
+         asphalt strip with centreline, threshold bars, apron, hangar and a
+         control tower. Upstream pulls in 18 MB of PBR grass textures and a
+         COLLADA mesh; this reconstruction uses inline box geometry and flat
+         colours so it is completely self-contained (no resource path setup).
+         Decorative models are visual only: no collision bodies to disturb
+         the vehicle's IMU during manual stick input. -->
+    <spherical_coordinates>
+      <latitude_deg>-35.3632621</latitude_deg>
+      <longitude_deg>149.1652374</longitude_deg>
+      <elevation>10.0</elevation>
+      <heading_deg>0</heading_deg>
+      <surface_model>EARTH_WGS84</surface_model>
+    </spherical_coordinates>
+
+    <model name="grass">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>1000 1000</size></plane></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>1000 1000</size></plane></geometry>
+          <material><diffuse>0.24 0.42 0.20 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="runway">
+      <static>true</static>
+      <link name="surface">
+        <visual name="asphalt">
+          <pose>0 0 0.02 0 0 0</pose>
+          <geometry><box><size>200 40 0.04</size></box></geometry>
+          <material><diffuse>0.16 0.17 0.18 1</diffuse></material>
+        </visual>
+        <visual name="edge_north">
+          <pose>0 19.4 0.045 0 0 0</pose>
+          <geometry><box><size>196 0.45 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="edge_south">
+          <pose>0 -19.4 0.045 0 0 0</pose>
+          <geometry><box><size>196 0.45 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="centre_00">
+          <pose>-88 0 0.046 0 0 0</pose>
+          <geometry><box><size>6 0.6 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="centre_01">
+          <pose>-76 0 0.046 0 0 0</pose>
+          <geometry><box><size>6 0.6 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="centre_02">
+          <pose>-64 0 0.046 0 0 0</pose>
+          <geometry><box><size>6 0.6 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="centre_03">
+          <pose>-52 0 0.046 0 0 0</pose>
+          <geometry><box><size>6 0.6 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="centre_04">
+          <pose>-40 0 0.046 0 0 0</pose>
+          <geometry><box><size>6 0.6 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="centre_05">
+          <pose>-28 0 0.046 0 0 0</pose>
+          <geometry><box><size>6 0.6 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="centre_06">
+          <pose>-16 0 0.046 0 0 0</pose>
+          <geometry><box><size>6 0.6 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="centre_07">
+          <pose>-4 0 0.046 0 0 0</pose>
+          <geometry><box><size>6 0.6 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="centre_08">
+          <pose>8 0 0.046 0 0 0</pose>
+          <geometry><box><size>6 0.6 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="centre_09">
+          <pose>20 0 0.046 0 0 0</pose>
+          <geometry><box><size>6 0.6 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="centre_10">
+          <pose>32 0 0.046 0 0 0</pose>
+          <geometry><box><size>6 0.6 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="centre_11">
+          <pose>44 0 0.046 0 0 0</pose>
+          <geometry><box><size>6 0.6 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="centre_12">
+          <pose>56 0 0.046 0 0 0</pose>
+          <geometry><box><size>6 0.6 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="centre_13">
+          <pose>68 0 0.046 0 0 0</pose>
+          <geometry><box><size>6 0.6 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="centre_14">
+          <pose>80 0 0.046 0 0 0</pose>
+          <geometry><box><size>6 0.6 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="threshold_w_00">
+          <pose>-92 -14 0.046 0 0 0</pose>
+          <geometry><box><size>8 1.2 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="threshold_w_01">
+          <pose>-92 -10 0.046 0 0 0</pose>
+          <geometry><box><size>8 1.2 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="threshold_w_02">
+          <pose>-92 -6 0.046 0 0 0</pose>
+          <geometry><box><size>8 1.2 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="threshold_w_03">
+          <pose>-92 -2 0.046 0 0 0</pose>
+          <geometry><box><size>8 1.2 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="threshold_w_04">
+          <pose>-92 2 0.046 0 0 0</pose>
+          <geometry><box><size>8 1.2 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="threshold_w_05">
+          <pose>-92 6 0.046 0 0 0</pose>
+          <geometry><box><size>8 1.2 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="threshold_w_06">
+          <pose>-92 10 0.046 0 0 0</pose>
+          <geometry><box><size>8 1.2 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="threshold_w_07">
+          <pose>-92 14 0.046 0 0 0</pose>
+          <geometry><box><size>8 1.2 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="threshold_e_00">
+          <pose>92 -14 0.046 0 0 0</pose>
+          <geometry><box><size>8 1.2 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="threshold_e_01">
+          <pose>92 -10 0.046 0 0 0</pose>
+          <geometry><box><size>8 1.2 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="threshold_e_02">
+          <pose>92 -6 0.046 0 0 0</pose>
+          <geometry><box><size>8 1.2 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="threshold_e_03">
+          <pose>92 -2 0.046 0 0 0</pose>
+          <geometry><box><size>8 1.2 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="threshold_e_04">
+          <pose>92 2 0.046 0 0 0</pose>
+          <geometry><box><size>8 1.2 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="threshold_e_05">
+          <pose>92 6 0.046 0 0 0</pose>
+          <geometry><box><size>8 1.2 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="threshold_e_06">
+          <pose>92 10 0.046 0 0 0</pose>
+          <geometry><box><size>8 1.2 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+        <visual name="threshold_e_07">
+          <pose>92 14 0.046 0 0 0</pose>
+          <geometry><box><size>8 1.2 0.01</size></box></geometry>
+          <material><diffuse>0.92 0.92 0.92 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="apron">
+      <static>true</static>
+      <link name="link">
+        <visual name="concrete">
+          <pose>0 -36 0.015 0 0 0</pose>
+          <geometry><box><size>64 26 0.03</size></box></geometry>
+          <material><diffuse>0.42 0.43 0.44 1</diffuse></material>
+        </visual>
+        <visual name="taxiway">
+          <pose>0 -23 0.032 0 0 0</pose>
+          <geometry><box><size>7 14 0.01</size></box></geometry>
+          <material><diffuse>0.34 0.35 0.36 1</diffuse></material>
+        </visual>
+        <visual name="stand_00">
+          <pose>-24 -36 0.033 0 0 0</pose>
+          <geometry><box><size>0.4 18 0.01</size></box></geometry>
+          <material><diffuse>0.85 0.78 0.20 1</diffuse></material>
+        </visual>
+        <visual name="stand_01">
+          <pose>-12 -36 0.033 0 0 0</pose>
+          <geometry><box><size>0.4 18 0.01</size></box></geometry>
+          <material><diffuse>0.85 0.78 0.20 1</diffuse></material>
+        </visual>
+        <visual name="stand_02">
+          <pose>0 -36 0.033 0 0 0</pose>
+          <geometry><box><size>0.4 18 0.01</size></box></geometry>
+          <material><diffuse>0.85 0.78 0.20 1</diffuse></material>
+        </visual>
+        <visual name="stand_03">
+          <pose>12 -36 0.033 0 0 0</pose>
+          <geometry><box><size>0.4 18 0.01</size></box></geometry>
+          <material><diffuse>0.85 0.78 0.20 1</diffuse></material>
+        </visual>
+        <visual name="stand_04">
+          <pose>24 -36 0.033 0 0 0</pose>
+          <geometry><box><size>0.4 18 0.01</size></box></geometry>
+          <material><diffuse>0.85 0.78 0.20 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="hangar">
+      <static>true</static>
+      <link name="link">
+        <visual name="body">
+          <pose>-34 -62 4 0 0 0</pose>
+          <geometry><box><size>44 22 8</size></box></geometry>
+          <material><diffuse>0.72 0.74 0.76 1</diffuse></material>
+        </visual>
+        <visual name="roof">
+          <pose>-34 -62 8.3 0 0 0</pose>
+          <geometry><box><size>46 24 0.6</size></box></geometry>
+          <material><diffuse>0.30 0.33 0.36 1</diffuse></material>
+        </visual>
+        <visual name="door">
+          <pose>-34 -50.8 2.6 0 0 0</pose>
+          <geometry><box><size>18 0.3 5.2</size></box></geometry>
+          <material><diffuse>0.22 0.24 0.27 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="tower">
+      <static>true</static>
+      <link name="link">
+        <visual name="shaft">
+          <pose>34 -52 6 0 0 0</pose>
+          <geometry><cylinder><radius>1.8</radius><length>12</length></cylinder></geometry>
+          <material><diffuse>0.84 0.85 0.88 1</diffuse></material>
+        </visual>
+        <visual name="cab">
+          <pose>34 -52 13 0 0 0</pose>
+          <geometry><box><size>7 7 3</size></box></geometry>
+          <material><diffuse>0.34 0.55 0.74 1</diffuse></material>
+        </visual>
+        <visual name="cab_roof">
+          <pose>34 -52 14.7 0 0 0</pose>
+          <geometry><box><size>8 8 0.4</size></box></geometry>
+          <material><diffuse>0.25 0.27 0.30 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="windsock">
+      <static>true</static>
+      <link name="link">
+        <visual name="pole">
+          <pose>-14 -26 3 0 0 0</pose>
+          <geometry><cylinder><radius>0.12</radius><length>6</length></cylinder></geometry>
+          <material><diffuse>0.9 0.9 0.9 1</diffuse></material>
+        </visual>
+        <visual name="sock_a">
+          <pose>-12.4 -26 5.8 0 0 0</pose>
+          <geometry><box><size>3 0.8 0.8</size></box></geometry>
+          <material><diffuse>0.95 0.42 0.10 1</diffuse></material>
+        </visual>
+        <visual name="sock_b">
+          <pose>-9.6 -26 5.8 0 0 0</pose>
+          <geometry><box><size>2.4 0.6 0.6</size></box></geometry>
+          <material><diffuse>0.95 0.95 0.95 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="fuel_tanks">
+      <static>true</static>
+      <link name="link">
+        <visual name="tank_a">
+          <pose>54 -30 2 0 0 0</pose>
+          <geometry><cylinder><radius>2.2</radius><length>4</length></cylinder></geometry>
+          <material><diffuse>0.78 0.79 0.80 1</diffuse></material>
+        </visual>
+        <visual name="tank_b">
+          <pose>60 -30 2 0 0 0</pose>
+          <geometry><cylinder><radius>2.2</radius><length>4</length></cylinder></geometry>
+          <material><diffuse>0.78 0.79 0.80 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="homefly" canonical_link="body">
+      <pose>0 0 0.2 0 0 0</pose>
+
+      <link name="body">
+        <inertial>
+          <mass>0.8</mass>
+          <inertia>
+            <ixx>0.005</ixx><iyy>0.005</iyy><izz>0.009</izz>
+            <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+          </inertia>
+        </inertial>
+        <visual name="body_visual">
+          <geometry><box><size>0.20 0.20 0.05</size></box></geometry>
+        </visual>
+        <collision name="body_collision">
+          <geometry><box><size>0.20 0.20 0.05</size></box></geometry>
+        </collision>
+
+        <!-- Only angular_velocity + linear_acceleration are consumed by the
+             HomeFly complementary filter; no quaternion is needed. -->
+        <sensor name="imu" type="imu">
+          <topic>/world/quad/model/homefly/link/body/sensor/imu/imu</topic>
+          <always_on>1</always_on>
+          <update_rate>1000</update_rate>
+          <imu>
+            <angular_velocity>
+              <x><noise type="gaussian"><mean>0</mean><stddev>0</stddev></noise></x>
+              <y><noise type="gaussian"><mean>0</mean><stddev>0</stddev></noise></y>
+              <z><noise type="gaussian"><mean>0</mean><stddev>0</stddev></noise></z>
+            </angular_velocity>
+            <linear_acceleration>
+              <x><noise type="gaussian"><mean>0</mean><stddev>0</stddev></noise></x>
+              <y><noise type="gaussian"><mean>0</mean><stddev>0</stddev></noise></y>
+              <z><noise type="gaussian"><mean>0</mean><stddev>0</stddev></noise></z>
+            </linear_acceleration>
+          </imu>
+        </sensor>
+      </link>
+
+      <!-- Quad-X rotor layout. motorNumber matches MotorMixer's Quad-X order;
+           the bridge writes Actuators.velocity[motorNumber] in rad/s. -->
+      <link name="rotor_0">
+        <pose>0.17 0.17 0.02 0 0 0</pose>
+        <inertial><mass>0.005</mass><inertia><ixx>1e-6</ixx><iyy>1e-6</iyy><izz>2e-6</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+        <visual name="visual"><geometry><cylinder><radius>0.10</radius><length>0.005</length></cylinder></geometry></visual>
+      </link>
+      <joint name="rotor_0_joint" type="revolute">
+        <parent>body</parent><child>rotor_0</child>
+        <axis><xyz>0 0 1</xyz><limit><lower>-1e16</lower><upper>1e16</upper></limit></axis>
+      </joint>
+
+      <link name="rotor_1">
+        <pose>0.17 -0.17 0.02 0 0 0</pose>
+        <inertial><mass>0.005</mass><inertia><ixx>1e-6</ixx><iyy>1e-6</iyy><izz>2e-6</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+        <visual name="visual"><geometry><cylinder><radius>0.10</radius><length>0.005</length></cylinder></geometry></visual>
+      </link>
+      <joint name="rotor_1_joint" type="revolute">
+        <parent>body</parent><child>rotor_1</child>
+        <axis><xyz>0 0 1</xyz><limit><lower>-1e16</lower><upper>1e16</upper></limit></axis>
+      </joint>
+
+      <link name="rotor_2">
+        <pose>-0.17 -0.17 0.02 0 0 0</pose>
+        <inertial><mass>0.005</mass><inertia><ixx>1e-6</ixx><iyy>1e-6</iyy><izz>2e-6</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+        <visual name="visual"><geometry><cylinder><radius>0.10</radius><length>0.005</length></cylinder></geometry></visual>
+      </link>
+      <joint name="rotor_2_joint" type="revolute">
+        <parent>body</parent><child>rotor_2</child>
+        <axis><xyz>0 0 1</xyz><limit><lower>-1e16</lower><upper>1e16</upper></limit></axis>
+      </joint>
+
+      <link name="rotor_3">
+        <pose>-0.17 0.17 0.02 0 0 0</pose>
+        <inertial><mass>0.005</mass><inertia><ixx>1e-6</ixx><iyy>1e-6</iyy><izz>2e-6</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+        <visual name="visual"><geometry><cylinder><radius>0.10</radius><length>0.005</length></cylinder></geometry></visual>
+      </link>
+      <joint name="rotor_3_joint" type="revolute">
+        <parent>body</parent><child>rotor_3</child>
+        <axis><xyz>0 0 1</xyz><limit><lower>-1e16</lower><upper>1e16</upper></limit></axis>
+      </joint>
+
+      <plugin filename="gz-sim-multicopter-motor-model-system"
+              name="gz::sim::systems::MulticopterMotorModel">
+        <jointName>rotor_0_joint</jointName><linkName>rotor_0</linkName>
+        <turningDirection>ccw</turningDirection>
+        <timeConstantUp>0.0125</timeConstantUp><timeConstantDown>0.025</timeConstantDown>
+        <maxRotVelocity>1000</maxRotVelocity><motorConstant>8.54858e-06</motorConstant>
+        <momentConstant>0.016</momentConstant><commandSubTopic>actuators</commandSubTopic>
+        <motorNumber>0</motorNumber><rotorDragCoefficient>8.06428e-05</rotorDragCoefficient>
+        <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
+        <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim><motorType>velocity</motorType>
+      </plugin>
+      <plugin filename="gz-sim-multicopter-motor-model-system"
+              name="gz::sim::systems::MulticopterMotorModel">
+        <jointName>rotor_1_joint</jointName><linkName>rotor_1</linkName>
+        <turningDirection>cw</turningDirection>
+        <timeConstantUp>0.0125</timeConstantUp><timeConstantDown>0.025</timeConstantDown>
+        <maxRotVelocity>1000</maxRotVelocity><motorConstant>8.54858e-06</motorConstant>
+        <momentConstant>0.016</momentConstant><commandSubTopic>actuators</commandSubTopic>
+        <motorNumber>1</motorNumber><rotorDragCoefficient>8.06428e-05</rotorDragCoefficient>
+        <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
+        <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim><motorType>velocity</motorType>
+      </plugin>
+      <plugin filename="gz-sim-multicopter-motor-model-system"
+              name="gz::sim::systems::MulticopterMotorModel">
+        <jointName>rotor_2_joint</jointName><linkName>rotor_2</linkName>
+        <turningDirection>cw</turningDirection>
+        <timeConstantUp>0.0125</timeConstantUp><timeConstantDown>0.025</timeConstantDown>
+        <maxRotVelocity>1000</maxRotVelocity><motorConstant>8.54858e-06</motorConstant>
+        <momentConstant>0.016</momentConstant><commandSubTopic>actuators</commandSubTopic>
+        <motorNumber>2</motorNumber><rotorDragCoefficient>8.06428e-05</rotorDragCoefficient>
+        <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
+        <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim><motorType>velocity</motorType>
+      </plugin>
+      <plugin filename="gz-sim-multicopter-motor-model-system"
+              name="gz::sim::systems::MulticopterMotorModel">
+        <jointName>rotor_3_joint</jointName><linkName>rotor_3</linkName>
+        <turningDirection>ccw</turningDirection>
+        <timeConstantUp>0.0125</timeConstantUp><timeConstantDown>0.025</timeConstantDown>
+        <maxRotVelocity>1000</maxRotVelocity><motorConstant>8.54858e-06</motorConstant>
+        <momentConstant>0.016</momentConstant><commandSubTopic>actuators</commandSubTopic>
+        <motorNumber>3</motorNumber><rotorDragCoefficient>8.06428e-05</rotorDragCoefficient>
+        <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
+        <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim><motorType>velocity</motorType>
+      </plugin>
+    </model>
+  </world>
+</sdf>

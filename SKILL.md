@@ -75,7 +75,9 @@ tools/
 ├── run_wsl_sitl.sh                        WSL2 一键 SITL（构建 + 桥接 + Gazebo + .hfl 校验）
 └── gazebo/
     ├── homefly_quad.sdf                   Gazebo Garden Quad-X 模型片段
-    └── homefly_quad.world                 完整 world（1 kHz 物理、rotor joints、IMU、4 电机插件）
+    ├── homefly_quad.world                 默认 world（1 kHz 物理、rotor joints、IMU、4 电机插件）
+    ├── homefly_maze.world                 ArduPilot 迷宫场景（上游墙几何逐字复用，零依赖）
+    └── homefly_airport.world              ArduPilot 风格机场场景（内联几何，零依赖）
 ```
 外部仿真器（SITL）基础设施，飞控侧不依赖任何仿真器 SDK：
 ```
@@ -95,7 +97,7 @@ src/applications/linux_native/
 
 核心约束：飞控不链接 Gazebo / protobuf / ZeroMQ；控制循环只读写 SPSC 环，socket I/O 只发生在低优先级任务；每个控制周期恰好一帧 IMU / 一帧电机，仿真时间步长必须等于 control_period_us；GazeboClock 由「被消费的 IMU 帧时间戳」推进，禁止用宿主墙钟。线协议变更必须同步更新桥接脚本与 golden 向量测试。
 
-部署约束：外部仿真器、桥接进程与飞控必须处于同一 UDP 网络命名空间。WSL2 的 `localhostForwarding` 只转发 TCP，Windows 的 `.exe` 与 WSL2 桥接走 `127.0.0.1` UDP 必然失败；在 WSL2 中必须把飞控重新编译成 Linux 原生 ELF，三者全部放 Linux 侧（或全部放 Windows 侧）。一键入口 `tools/run_wsl_sitl.sh`，完整 world 模板 `tools/gazebo/homefly_quad.world`，细节见 `docs/gazebo.md` 第 8 节。
+部署约束：外部仿真器、桥接进程与飞控必须处于同一 UDP 网络命名空间。WSL2 的 `localhostForwarding` 只转发 TCP，Windows 的 `.exe` 与 WSL2 桥接走 `127.0.0.1` UDP 必然失败；在 WSL2 中必须把飞控重新编译成 Linux 原生 ELF，三者全部放 Linux 侧（或全部放 Windows 侧）。一键入口 `tools/run_wsl_sitl.sh`，三个可切换 world（默认空场 / ArduPilot 迷宫 / ArduPilot 风格机场，均保持 `world=quad` 与 `model=homefly` 以维持桥接话题契约），细节见 `docs/gazebo.md` 第 8.9 节。
 
 WiFi 地面站控制链路（上行指令，与 SITL 同一套架构模式）：
 ```
