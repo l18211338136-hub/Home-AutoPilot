@@ -74,6 +74,7 @@ tools/
 ├── gazebo_bridge.py                       mock / gz / classic 三后端 SITL 桥接进程
 ├── run_wsl_sitl.sh                        WSL2 一键 SITL（构建 + 桥接 + Gazebo + .hfl 校验）
 ├── gz_focus_homefly.sh                    GUI 相机对焦（/gui/move_to，机场场景找飞机）
+├── run_wsl_gui.sh                         WSLg GUI 终端 1 一键启动（变量自检 + 自动对焦）
 └── gazebo/
     ├── homefly_quad.sdf                   Gazebo Garden Quad-X 模型片段（topic 布局已与 world 对齐）
     ├── homefly_quad.world                 默认 world（1 kHz 物理、rotor joints、IMU、4 电机插件）

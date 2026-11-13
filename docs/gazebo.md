@@ -538,3 +538,63 @@ GZ_IP=127.0.0.1 gz service -l | grep '/gui/'
 若服务齐全、相机 pose 也变了但视口仍空白，在终端 1 加
 `export LIBGL_ALWAYS_SOFTWARE=1` 后重启 `gz sim`（WSLg 无 GPU 时 ogre2 带 PBR
 贴图可能起不来）。这条对 `homefly_quad.world` 同样适用，只是空场不容易暴露。
+
+### 8.9.2 GUI 卡在 "GUI requesting list of world names..."
+
+**典型日志**：
+
+```text
+[Msg] Detected Wayland. Setting Qt to use the xcb plugin: 'QT_QPA_PLATFORM=xcb'.
+[GUI] [Dbg] [Application.cc:657] Create main window
+[GUI] [Dbg] [PathManager.cc:68] Requesting resource paths through [/gazebo/resource_paths/get]
+[GUI] [Dbg] [Gui.cc:356] GUI requesting list of world names. The server may be busy downloading resources. Please be patient.
+[GUI] [Dbg] [Gui.cc:356] GUI requesting list of world names. ...（一直重复）
+```
+
+前三行都正常：WSLg 是 Wayland，gz 自动切 xcb；`Create main window` 与
+`Requesting resource paths` 说明 GUI 进程本身已经起来了。**真正的卡点是
+`/gazebo/worlds` 服务始终没有响应** —— GUI 拿不到 world 名只能一直重试。
+那句 `server may be busy downloading resources` 是写死的提示文本，并不代表
+真的在下载，别被它带偏去等网络。
+
+| 根因 | 判定 | 修复 |
+| --- | --- | --- |
+| `GZ_IP` 没设，或只在别的终端设了 | 另开终端 `gz service -l \| grep /gazebo/worlds` 为空 | 在起 `gz sim` 的**同一个终端**设 `GZ_IP=127.0.0.1` |
+| `GZ_SIM_RESOURCE_PATH` 没设，server 卡在 `model://runway` 解析 | server 终端出现 `Unable to find uri[model://runway]`，或迟迟没有 world 加载完成日志 | 同终端一并导出资源路径 |
+
+**关键**：shell `export` 不跨终端。之前两次卡住都是因为分两行 `export` 时换了
+终端 / 漏了一条。写成命令前缀就杜绝漏项：
+
+```bash
+cd /mnt/d/Github/Home-AutoPilot
+GZ_IP=127.0.0.1 \
+GZ_SIM_RESOURCE_PATH="$PWD/tools/gazebo/models" \
+gz sim -r -v4 tools/gazebo/homefly_airport.world
+```
+
+**隔离诊断**（另开终端，同样要设 `GZ_IP`）：
+
+```bash
+export GZ_IP=127.0.0.1
+gz service -l | grep -E '/gazebo/(worlds|resource_paths/get)'
+GZ_IP=127.0.0.1 gz service -s /gazebo/worlds \
+  --reqtype gz.msgs.Empty --reptype gz.msgs.StringMsg_V \
+  --timeout 3000 --req ''
+```
+
+最后一条返回 world 名 → server 正常，纯粹是 GUI 侧 `GZ_IP` 分区不一致；
+超时 → 去看 server 终端的资源加载日志。重来前先清掉卡住的进程：
+`pkill -f 'gz sim'`（或各终端 Ctrl-C）。
+
+**一键版（推荐）**：`tools/run_wsl_gui.sh` 把环境变量、world / runway 资源自检、
+启动、以及 GUI 就绪后自动调用 `gz_focus_homefly.sh` 全部封进一个进程，
+变量只作用于本次调用，不可能漏：
+
+```bash
+bash tools/run_wsl_gui.sh                                    # 机场 + 自动对焦
+bash tools/run_wsl_gui.sh --world tools/gazebo/homefly_quad.world
+bash tools/run_wsl_gui.sh --no-focus                        # 只要 GUI，不自动对焦
+```
+
+脚本只负责终端 1。终端 2/3/4（bridge / FC / GCS）仍按 8.7 / 8.8，且终端 2 的
+bridge 要自己设 `GZ_IP=127.0.0.1`（8.9 已说明）。

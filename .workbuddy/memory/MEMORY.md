@@ -19,7 +19,7 @@
 3. 通信仅遥测下行，缺 RC/指令上行、MAVLink。
 4. 驱动几乎空白（仅 LED + 仿真 PWM）；esp32/stm32 平台仅 logging 占位，clock/timer/gpio/i2c/spi 未实现。
 5. 传感器仅 IMU 在用，无气压计/磁力计/GPS、无 EKF 融合。
-6. gz/classic SITL 与 world 未在真 Gazebo 验证；无 CI。
+6. gz/classic SITL 已在 WSL2 Ubuntu + Gazebo Harmonic 8 真机验证（含 WSLg GUI 三终端闭环 PASS、原版 ArduPilot 机场 / 迷宫场景加载）；仍无 CI。
 
 ## WiFi 控制链路（已完成，2026-11-12）
 - 28 字节帧 `control_protocol`（HFLC magic/FNV-1a/seq）+ `CommandReceiver`（poll 低优先级 / latest_setpoint 零 I/O）+ `UdpLink`（复用 gazebo UdpSocket）+ `tools/wifi_gcs.py`。
@@ -43,3 +43,9 @@
   `GIT_CONFIG_NOSYSTEM=1 GCM_INTERACTIVE=Never GIT_TERMINAL_PROMPT=0 git push -v origin main`
 - 已验证无效：调大 `http.postBuffer`、后台运行、换 PowerShell 会话、清空 helper。别在这些方向上反复尝试；先 `git ls-remote` 与 `git rev-parse HEAD` 对比确认是否真的没推上去。
 - 用户工作模式：Windows 侧 commit/push，WSL 侧 `git pull` 后自行验证；不要替用户跑 `git push`。
+
+## WSLg GUI 部署约定（2026-11-13）
+- 终端 1 一律用 `bash tools/run_wsl_gui.sh`：进程级 export `GZ_IP=127.0.0.1` + `GZ_SIM_RESOURCE_PATH`，自检 `gz` / world / `models/runway/model.config`，启动后自动调 `gz_focus_homefly.sh` 对焦。**不要手敲分两行 export** —— shell export 不跨终端，已踩坑 3 次卡在 `GUI requesting list of world names...`（真实卡点是 `/gazebo/worlds` 服务无响应；`server may be busy downloading resources` 是写死提示文本，不代表真在下载）。
+- 终端 2 的 bridge 仍需自己 `export GZ_IP=127.0.0.1`；机场 world 必须让 `GZ_SIM_RESOURCE_PATH` 指向 `tools/gazebo/models`。
+- 找不到飞机（0.3 m Iris vs 1500×100 m 跑道 + 固定默认相机 pose）→ `bash tools/gz_focus_homefly.sh`，打杆时加 `--follow`。**禁止**往 world SDF 加 `<gui>` 段：Gazebo Sim 会整体覆盖默认 GUI 配置导致窗口空白；持久化改用 `gz sim --gui-config <完整配置>`。
+- 服务齐全但视口仍空白 → 终端 1 加 `export LIBGL_ALWAYS_SOFTWARE=1` 重启（WSLg 无 GPU 时 ogre2 + PBR 贴图可能起不来）。
