@@ -96,6 +96,8 @@ python tools/gazebo_bridge.py --backend gz \
 
 > world 模板只做过 XML 良构性检查，**未在真实 Gazebo 中加载验证**。首次运行请按实际发行版核对插件文件名、IMU `<topic>`（默认含 world 名 `quad`）、`commandSubTopic`（默认 `/actuators`）与机型参数。
 
+> **Gazebo Sim 8 (Harmonic) 必读**：IMU 传感器由独立的 `gz-sim-imu-system`（`gz::sim::systems::Imu`）创建并发布，`gz-sim-sensors-system` 只管 camera/lidar 等渲染型传感器。world 里必须同时声明两者，否则 `gz topic -l` 里不会出现任何 IMU 话题、桥接 `imu_frames=0`。日志里的 `[Sensors.cc] Waiting for init` 是渲染线程的正常等待，与 IMU 无关。此外 `-s` 启动的 server 默认暂停，必须加 `-r` 才会推进仿真并产生数据。
+
 ### 4.2 轴系与单位
 
 | 项 | HomeFly 约定 | Gazebo 默认 | 处理 |

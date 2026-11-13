@@ -34,6 +34,12 @@
 
     <plugin filename="gz-sim-physics-system"
             name="gz::sim::systems::Physics"/>
+    <!-- Gazebo Sim 8 (Harmonic): IMU sensors are created by the dedicated
+         Imu system, NOT by gz-sim-sensors-system (which only handles
+         camera/lidar/thermal style rendering sensors). Without this plugin
+         no IMU topic is ever published and the SITL bridge gets 0 frames. -->
+    <plugin filename="gz-sim-imu-system"
+            name="gz::sim::systems::Imu"/>
     <plugin filename="gz-sim-sensors-system"
             name="gz::sim::systems::Sensors"/>
     <plugin filename="gz-sim-user-commands-system"
